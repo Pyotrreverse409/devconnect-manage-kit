@@ -17,8 +17,10 @@ final filteredNetworkEntriesProvider = Provider<List<NetworkEntry>>((ref) {
   final entries = ref.watch(networkEntriesProvider);
   final search = ref.watch(networkSearchProvider).toLowerCase();
   final methodFilter = ref.watch(networkMethodFilterProvider);
+  final selectedDevice = ref.watch(selectedDeviceProvider);
 
   return entries.where((e) {
+    if (selectedDevice != null && e.deviceId != selectedDevice) return false;
     if (methodFilter != null && e.method.toUpperCase() != methodFilter) {
       return false;
     }

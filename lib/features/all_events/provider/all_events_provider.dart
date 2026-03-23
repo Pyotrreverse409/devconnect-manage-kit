@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../server/providers/server_providers.dart';
 import '../../console/provider/console_providers.dart';
 import '../../network_inspector/provider/network_providers.dart';
 import '../../state_inspector/provider/state_providers.dart';
@@ -108,8 +109,10 @@ final filteredAllEventsProvider = Provider<List<UnifiedEvent>>((ref) {
   final events = ref.watch(allEventsProvider);
   final search = ref.watch(allEventsSearchProvider).toLowerCase();
   final filters = ref.watch(allEventsFilterProvider);
+  final selectedDevice = ref.watch(selectedDeviceProvider);
 
   return events.where((e) {
+    if (selectedDevice != null && e.deviceId != selectedDevice) return false;
     if (!filters.contains(e.type)) return false;
     if (search.isNotEmpty) {
       return e.title.toLowerCase().contains(search) ||

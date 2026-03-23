@@ -23,9 +23,16 @@ final connectedDevicesProvider =
   return ConnectedDevicesNotifier(handler);
 });
 
+/// null = show all devices, non-null = filter by this deviceId
 final selectedDeviceProvider =
     StateNotifierProvider<SelectedDeviceNotifier, String?>((ref) {
-  return SelectedDeviceNotifier();
+  // Auto-select first device when it connects
+  final devices = ref.watch(connectedDevicesProvider);
+  final notifier = SelectedDeviceNotifier();
+  if (devices.length == 1) {
+    notifier.select(devices.first.deviceId);
+  }
+  return notifier;
 });
 
 class ConnectedDevicesNotifier extends StateNotifier<List<DeviceInfo>> {

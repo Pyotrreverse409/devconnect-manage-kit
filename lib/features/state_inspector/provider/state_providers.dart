@@ -18,11 +18,15 @@ final stateSearchProvider = StateProvider<String>((ref) => '');
 final filteredStateChangesProvider = Provider<List<StateChange>>((ref) {
   final entries = ref.watch(stateChangesProvider);
   final search = ref.watch(stateSearchProvider).toLowerCase();
+  final selectedDevice = ref.watch(selectedDeviceProvider);
 
-  if (search.isEmpty) return entries;
   return entries.where((e) {
-    return e.actionName.toLowerCase().contains(search) ||
-        e.stateManagerType.toLowerCase().contains(search);
+    if (selectedDevice != null && e.deviceId != selectedDevice) return false;
+    if (search.isNotEmpty) {
+      return e.actionName.toLowerCase().contains(search) ||
+          e.stateManagerType.toLowerCase().contains(search);
+    }
+    return true;
   }).toList();
 });
 

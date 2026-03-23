@@ -19,8 +19,11 @@ final filteredConsoleEntriesProvider = Provider<List<LogEntry>>((ref) {
   final entries = ref.watch(consoleEntriesProvider);
   final search = ref.watch(consoleSearchProvider).toLowerCase();
   final filters = ref.watch(consoleFilterProvider);
+  final selectedDevice = ref.watch(selectedDeviceProvider);
 
   return entries.where((e) {
+    // Filter by selected device
+    if (selectedDevice != null && e.deviceId != selectedDevice) return false;
     if (!filters.contains(e.level)) return false;
     if (search.isNotEmpty) {
       return e.message.toLowerCase().contains(search) ||

@@ -15,11 +15,15 @@ final storageSearchProvider = StateProvider<String>((ref) => '');
 final filteredStorageEntriesProvider = Provider<List<StorageEntry>>((ref) {
   final entries = ref.watch(storageEntriesProvider);
   final search = ref.watch(storageSearchProvider).toLowerCase();
+  final selectedDevice = ref.watch(selectedDeviceProvider);
 
-  if (search.isEmpty) return entries;
   return entries.where((e) {
-    return e.key.toLowerCase().contains(search) ||
-        (e.value?.toString().toLowerCase().contains(search) ?? false);
+    if (selectedDevice != null && e.deviceId != selectedDevice) return false;
+    if (search.isNotEmpty) {
+      return e.key.toLowerCase().contains(search) ||
+          (e.value?.toString().toLowerCase().contains(search) ?? false);
+    }
+    return true;
   }).toList();
 });
 
