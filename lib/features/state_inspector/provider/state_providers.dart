@@ -1,0 +1,41 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../models/state/state_change.dart';
+import '../../../server/providers/server_providers.dart';
+import '../../../server/ws_message_handler.dart';
+
+final stateChangesProvider =
+    StateNotifierProvider<StateChangesNotifier, List<StateChange>>((ref) {
+  final handler = ref.watch(wsMessageHandlerProvider);
+  return StateChangesNotifier(handler);
+});
+
+final selectedStateChangeProvider =
+    StateProvider<StateChange?>((ref) => null);
+
+final stateSearchProvider = StateProvider<String>((ref) => '');
+
+final filteredStateChangesProvider = Provider<List<StateChange>>((ref) {
+  final entries = ref.watch(stateChangesProvider);
+  final search = ref.watch(stateSearchProvider).toLowerCase();
+
+  if (search.isEmpty) return entries;
+  return entries.where((e) {
+    return e.actionName.toLowerCase().contains(search) ||
+        e.stateManagerType.toLowerCase().contains(search);
+  }).toList();
+});
+
+class StateChangesNotifier extends StateNotifier<List<StateChange>> {
+  StateChangesNotifier(WsMessageHandler wsMessageHandler) : super([]) {
+    wsMessageHandler.onState.listen((entry) {
+      if (state.length > 5000) {
+        state = [...state.skip(500), entry];
+      } else {
+        state = [...state, entry];
+      }
+    });
+  }
+
+  void clear() => state = [];
+}

@@ -1,0 +1,45 @@
+{
+  "name": "devconnect-react-native",
+  "version": "1.0.0",
+  "description": "DevConnect client SDK for React Native - auto-intercepts fetch, axios, console.log, Redux, MobX, AsyncStorage, Firebase, OAuth2, and all popular logging libraries",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "lint": "eslint src/"
+  },
+  "keywords": [
+    "react-native",
+    "debugging",
+    "devtools",
+    "network-inspector",
+    "redux",
+    "mobx",
+    "asyncstorage",
+    "reactotron-alternative",
+    "flipper-alternative"
+  ],
+  "author": "Ridelink Techs",
+  "license": "MIT",
+  "homepage": "https://github.com/ridelink-techs/devconnect",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ridelink-techs/devconnect.git",
+    "directory": "client_sdks/devconnect-react-native"
+  },
+  "bugs": {
+    "url": "https://github.com/ridelink-techs/devconnect/issues"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.60.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/react-native": ">=0.60.0"
+  }
+}
