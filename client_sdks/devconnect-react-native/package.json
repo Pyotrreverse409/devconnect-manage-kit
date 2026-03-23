@@ -26,14 +26,14 @@
   ],
   "author": "Ridelink Techs",
   "license": "MIT",
-  "homepage": "https://github.com/ridelink-techs/devconnect",
+  "homepage": "https://github.com/ridelinktechs/devconnect",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ridelink-techs/devconnect.git",
+    "url": "https://github.com/ridelinktechs/devconnect.git",
     "directory": "client_sdks/devconnect-react-native"
   },
   "bugs": {
-    "url": "https://github.com/ridelink-techs/devconnect/issues"
+    "url": "https://github.com/ridelinktechs/devconnect/issues"
   },
   "peerDependencies": {
     "react-native": ">=0.60.0"

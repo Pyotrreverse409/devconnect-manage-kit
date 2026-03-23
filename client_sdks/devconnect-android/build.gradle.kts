@@ -46,7 +46,7 @@ dependencies {
 publishing {
     publications {
         register<MavenPublication>("release") {
-            groupId = "com.github.ridelink-techs"
+            groupId = "com.github.ridelinktechs"
             artifactId = "devconnect-android"
             version = "1.0.0"
 
@@ -57,7 +57,7 @@ publishing {
             pom {
                 name.set("DevConnect Android SDK")
                 description.set("Android client SDK for DevConnect - auto-intercepts OkHttp, Retrofit, Log, Timber, SharedPreferences")
-                url.set("https://github.com/ridelink-techs/devconnect")
+                url.set("https://github.com/ridelinktechs/devconnect")
                 licenses {
                     license {
                         name.set("MIT License")

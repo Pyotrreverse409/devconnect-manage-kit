@@ -1,9 +1,9 @@
 name: devconnect_flutter
 description: DevConnect client SDK for Flutter - auto-intercepts HTTP, logs, state, storage. Works with Dio, http, Firebase, OAuth2, logger, talker, fimber, and more.
 version: 1.0.0
-homepage: https://github.com/ridelink-techs/devconnect
-repository: https://github.com/ridelink-techs/devconnect
-issue_tracker: https://github.com/ridelink-techs/devconnect/issues
+homepage: https://github.com/ridelinktechs/devconnect
+repository: https://github.com/ridelinktechs/devconnect
+issue_tracker: https://github.com/ridelinktechs/devconnect/issues
 
 environment:
   sdk: ^3.0.0

@@ -29,7 +29,7 @@ Like Reactotron, but with better UI, dual theme support, and multi-platform cove
 
 ### macOS (Apple Silicon + Intel)
 
-Download **`DevConnect-macOS-v1.0.0-universal.dmg`** from [Releases](https://github.com/ridelink-techs/devconnect/releases).
+Download **`DevConnect-macOS-v1.0.0-universal.dmg`** from [Releases](https://github.com/ridelinktechs/devconnect/releases).
 
 Open DMG, drag `DevConnect.app` to Applications. Done.
 
@@ -37,14 +37,14 @@ Open DMG, drag `DevConnect.app` to Applications. Done.
 
 ### Windows
 
-Download **`DevConnect-Windows-v1.0.0.zip`** from [Releases](https://github.com/ridelink-techs/devconnect/releases).
+Download **`DevConnect-Windows-v1.0.0.zip`** from [Releases](https://github.com/ridelinktechs/devconnect/releases).
 
 Extract and run `DevConnect.exe`. Done.
 
 ### Build from source
 
 ```bash
-git clone https://github.com/ridelink-techs/devconnect.git
+git clone https://github.com/ridelinktechs/devconnect.git
 cd devconnect
 
 # macOS
@@ -85,7 +85,7 @@ Or from GitHub:
 dependencies:
   devconnect_flutter:
     git:
-      url: https://github.com/ridelink-techs/devconnect.git
+      url: https://github.com/ridelinktechs/devconnect.git
       path: client_sdks/devconnect_flutter
 ```
 
@@ -251,7 +251,7 @@ npm install devconnect-react-native
 Or from GitHub:
 
 ```bash
-yarn add github:ridelink-techs/devconnect#main
+yarn add github:ridelinktechs/devconnect#main
 ```
 
 ### Quick Start
@@ -412,11 +412,11 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.ridelink-techs.devconnect:devconnect-android:v1.0.0")
+    implementation("com.github.ridelinktechs.devconnect:devconnect-android:v1.0.0")
 }
 ```
 
-Or AAR file: download from [Releases](https://github.com/ridelink-techs/devconnect/releases):
+Or AAR file: download from [Releases](https://github.com/ridelinktechs/devconnect/releases):
 
 ```gradle
 dependencies {
