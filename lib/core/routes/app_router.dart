@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/all_events/presentation/pages/all_events_page.dart';
 import '../../features/console/presentation/pages/console_page.dart';
 import '../../features/database_viewer/presentation/pages/database_viewer_page.dart';
 import '../../features/network_inspector/presentation/pages/network_inspector_page.dart';
@@ -14,7 +15,7 @@ final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
 final appRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
-  initialLocation: '/console',
+  initialLocation: '/all',
   routes: [
     ShellRoute(
       navigatorKey: _shellNavigatorKey,
@@ -25,6 +26,12 @@ final appRouter = GoRouter(
         );
       },
       routes: [
+        GoRoute(
+          path: '/all',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: AllEventsPage(),
+          ),
+        ),
         GoRoute(
           path: '/console',
           pageBuilder: (context, state) => const NoTransitionPage(

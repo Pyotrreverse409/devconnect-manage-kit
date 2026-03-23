@@ -10,6 +10,7 @@ import '../../../../components/misc/status_badge.dart';
 import '../../../../components/viewers/json_viewer.dart';
 import '../../../../core/theme/color_tokens.dart';
 import '../../../../models/network/network_entry.dart';
+import '../../../../server/providers/server_providers.dart';
 import '../../provider/network_providers.dart';
 
 class NetworkInspectorPage extends ConsumerWidget {
@@ -130,7 +131,7 @@ class _Toolbar extends ConsumerWidget {
   }
 }
 
-class _RequestTile extends StatelessWidget {
+class _RequestTile extends ConsumerWidget {
   final NetworkEntry entry;
   final bool isSelected;
   final VoidCallback onTap;
@@ -142,12 +143,16 @@ class _RequestTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final time = DateFormat('HH:mm:ss.SSS').format(
       DateTime.fromMillisecondsSinceEpoch(entry.startTime),
     );
+
+    final devices = ref.watch(connectedDevicesProvider);
+    final device =
+        devices.where((d) => d.deviceId == entry.deviceId).firstOrNull;
 
     // Parse URL to show path only
     Uri? uri;
@@ -179,6 +184,11 @@ class _RequestTile extends StatelessWidget {
           ),
           child: Row(
             children: [
+              // Platform tag
+              if (device != null) ...[
+                PlatformBadge(platform: device.platform),
+                const SizedBox(width: 6),
+              ],
               HttpMethodBadge(method: entry.method),
               const SizedBox(width: 8),
               if (entry.isComplete)

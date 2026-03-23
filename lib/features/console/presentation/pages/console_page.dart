@@ -10,6 +10,7 @@ import '../../../../components/misc/status_badge.dart';
 import '../../../../components/viewers/json_viewer.dart';
 import '../../../../core/theme/color_tokens.dart';
 import '../../../../models/log/log_entry.dart';
+import '../../../../server/providers/server_providers.dart';
 import '../../provider/console_providers.dart';
 
 class ConsolePage extends ConsumerStatefulWidget {
@@ -277,7 +278,7 @@ class _ToolbarButton extends StatelessWidget {
   }
 }
 
-class _LogEntryTile extends StatelessWidget {
+class _LogEntryTile extends ConsumerWidget {
   final LogEntry entry;
   final bool isSelected;
   final VoidCallback onTap;
@@ -289,12 +290,17 @@ class _LogEntryTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final time = DateFormat('HH:mm:ss.SSS').format(
       DateTime.fromMillisecondsSinceEpoch(entry.timestamp),
     );
+
+    // Lookup platform from connected devices
+    final devices = ref.watch(connectedDevicesProvider);
+    final device =
+        devices.where((d) => d.deviceId == entry.deviceId).firstOrNull;
 
     return GestureDetector(
       onTap: onTap,
@@ -327,7 +333,11 @@ class _LogEntryTile extends StatelessWidget {
                   color: Colors.grey[500],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
+              // Platform tag
+              if (device != null)
+                PlatformBadge(platform: device.platform),
+              if (device != null) const SizedBox(width: 6),
               LogLevelBadge(level: entry.level.name),
               const SizedBox(width: 8),
               if (entry.tag != null) ...[

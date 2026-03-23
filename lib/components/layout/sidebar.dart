@@ -20,6 +20,11 @@ class SidebarItem {
 
 final sidebarItems = [
   const SidebarItem(
+    label: 'All',
+    icon: LucideIcons.layoutDashboard,
+    routePath: '/all',
+  ),
+  const SidebarItem(
     label: 'Console',
     icon: LucideIcons.terminal,
     routePath: '/console',
@@ -128,6 +133,57 @@ class Sidebar extends ConsumerWidget {
               },
             ),
           ),
+          const Divider(height: 1, indent: 12, endIndent: 12),
+          const SizedBox(height: 4),
+          // Connected devices list
+          if (devices.isNotEmpty)
+            ...devices.map((d) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Tooltip(
+                    message: '${d.appName}\n${d.deviceName}\n${d.osVersion}',
+                    child: Container(
+                      width: 52,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _platformColor(d.platform).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _platformColor(d.platform).withValues(alpha: 0.3),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            _platformIcon(d.platform),
+                            size: 14,
+                            color: _platformColor(d.platform),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _platformLabel(d.platform),
+                            style: TextStyle(
+                              fontSize: 7,
+                              fontWeight: FontWeight.w700,
+                              color: _platformColor(d.platform),
+                            ),
+                          ),
+                          Text(
+                            d.appName.length > 7
+                                ? '${d.appName.substring(0, 6)}..'
+                                : d.appName,
+                            style: TextStyle(
+                              fontSize: 6,
+                              color: isDark ? Colors.white54 : Colors.black45,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )),
+          const SizedBox(height: 4),
           // Theme toggle
           Padding(
             padding: const EdgeInsets.all(8.0),
@@ -229,6 +285,48 @@ class _SidebarButtonState extends State<_SidebarButton> {
         ),
       ),
     );
+  }
+}
+
+Color _platformColor(String platform) {
+  switch (platform.toLowerCase()) {
+    case 'flutter':
+      return const Color(0xFF02569B);
+    case 'react_native':
+    case 'reactnative':
+      return const Color(0xFF61DAFB);
+    case 'android':
+      return const Color(0xFF3DDC84);
+    default:
+      return Colors.grey;
+  }
+}
+
+IconData _platformIcon(String platform) {
+  switch (platform.toLowerCase()) {
+    case 'flutter':
+      return LucideIcons.smartphone;
+    case 'react_native':
+    case 'reactnative':
+      return LucideIcons.atom;
+    case 'android':
+      return LucideIcons.tablet;
+    default:
+      return LucideIcons.monitor;
+  }
+}
+
+String _platformLabel(String platform) {
+  switch (platform.toLowerCase()) {
+    case 'flutter':
+      return 'Flutter';
+    case 'react_native':
+    case 'reactnative':
+      return 'RN';
+    case 'android':
+      return 'Android';
+    default:
+      return platform;
   }
 }
 
