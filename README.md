@@ -22,8 +22,11 @@ Download from [Releases](https://github.com/ridelinktechs/devconnect/releases).
 ```bash
 git clone https://github.com/ridelinktechs/devconnect.git
 cd devconnect
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
 flutter build macos --release   # macOS
 flutter build windows --release # Windows
+# Output: build/macos/Build/Products/Release/DevConnect.app
 ```
 
 ### Features
@@ -46,6 +49,13 @@ flutter build windows --release # Windows
 ## Flutter SDK
 
 ### Install
+
+```bash
+# From pub.dev (after published)
+flutter pub add devconnect_flutter
+```
+
+Or from GitHub:
 
 ```yaml
 # pubspec.yaml
@@ -85,11 +95,20 @@ await DevConnect.initAndRunApp(
 
 ### Manual Setup
 
+> `initAndRunApp()` already calls `init()` + `httpOverrides()` + `runZoned()` internally.
+> Only use manual setup if you need to control each step separately (e.g., custom HttpOverrides, custom Zone, or init without runApp).
+
 ```dart
 void main() async {
+  // Step 1: Connect to DevConnect desktop (WebSocket)
   await DevConnect.init(appName: 'MyApp');
-  HttpOverrides.global = DevConnect.httpOverrides(); // intercept all HTTP
-  DevConnect.runZoned(() => runApp(const MyApp()));   // capture logs
+
+  // Step 2: Intercept ALL HTTP globally (http, Dio, Chopper, etc.)
+  // Skip if you already have a custom HttpOverrides
+  HttpOverrides.global = DevConnect.httpOverrides();
+
+  // Step 3: Capture print/debugPrint logs via Zone + run app
+  DevConnect.runZoned(() => runApp(const MyApp()));
 }
 ```
 
@@ -239,8 +258,15 @@ GoRouter(observers: [DevConnect.navigationObserver()])
 ### Install
 
 ```bash
+# From npm (after published)
 yarn add devconnect-react-native
-# or from GitHub
+# or
+npm install devconnect-react-native
+```
+
+Or from GitHub:
+
+```bash
 yarn add github:ridelinktechs/devconnect#main
 ```
 
@@ -396,16 +422,33 @@ DevConnect.onStateRestore((state) => {
 ### Install
 
 ```gradle
-// JitPack
+// From Maven Central (after published)
 dependencies {
-    implementation("com.github.ridelinktechs.devconnect:devconnect-android:v1.0.0")
+    implementation("com.ridelink:devconnect-android:1.0.0")
 }
+```
 
+Or from JitPack (GitHub):
+
+```gradle
 // settings.gradle.kts
 dependencyResolutionManagement {
     repositories {
         maven { url = uri("https://jitpack.io") }
     }
+}
+
+// app/build.gradle.kts
+dependencies {
+    implementation("com.github.ridelinktechs.devconnect:devconnect-android:v1.0.0")
+}
+```
+
+Or AAR file from [Releases](https://github.com/ridelinktechs/devconnect/releases):
+
+```gradle
+dependencies {
+    implementation(files("libs/devconnect-android-1.0.0.aar"))
 }
 ```
 
@@ -582,4 +625,4 @@ Or manually: `adb reverse tcp:9090 tcp:9090`
 
 ## License
 
-MIT
+MIT - by [buivietphi](https://github.com/buivietphi)
