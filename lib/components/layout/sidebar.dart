@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/providers/tab_visibility_provider.dart';
 import '../../core/theme/color_tokens.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../server/providers/server_providers.dart';
@@ -76,6 +77,15 @@ class Sidebar extends ConsumerWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final devices = ref.watch(connectedDevicesProvider);
+    final isCollapsed = ref.watch(sidebarCollapsedProvider);
+
+    if (isCollapsed) {
+      return _CollapsedSidebar(
+        isDark: isDark,
+        onExpand: () =>
+            ref.read(sidebarCollapsedProvider.notifier).state = false,
+      );
+    }
 
     return Container(
       width: 68,
@@ -125,20 +135,26 @@ class Sidebar extends ConsumerWidget {
           const SizedBox(height: 8),
           // Navigation items
           Expanded(
-            child: ListView.builder(
-              itemCount: sidebarItems.length,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              itemBuilder: (context, index) {
-                final item = sidebarItems[index];
-                final isSelected = index == selectedIndex;
-                return _SidebarButton(
-                  icon: item.icon,
-                  label: item.label,
-                  isSelected: isSelected,
-                  onTap: () => onItemSelected(index),
-                );
-              },
-            ),
+            child: Builder(builder: (context) {
+              final enabledTabs = ref.watch(tabVisibilityProvider);
+              return ListView.builder(
+                itemCount: sidebarItems.length,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                itemBuilder: (context, index) {
+                  final item = sidebarItems[index];
+                  final isSelected = index == selectedIndex;
+                  final isLocked =
+                      !isTabEnabled(enabledTabs, item.routePath);
+                  return _SidebarButton(
+                    icon: item.icon,
+                    label: item.label,
+                    isSelected: isSelected,
+                    isLocked: isLocked,
+                    onTap: () => onItemSelected(index),
+                  );
+                },
+              );
+            }),
           ),
           const Divider(height: 1, indent: 12, endIndent: 12),
           const SizedBox(height: 4),
@@ -172,8 +188,9 @@ class Sidebar extends ConsumerWidget {
                         icon: _platformIcon(d.platform),
                         color: _platformColor(d.platform),
                         isSelected: isActive,
-                        tooltip:
-                            '${d.appName}\n${d.deviceName}\n${d.osVersion}\n\nTap to select',
+                        tooltip: d.deviceName != d.osVersion
+                            ? '${d.appName}\n${d.deviceName}\n${d.osVersion}\n\nTap to select'
+                            : '${d.appName}\n${d.osVersion}\n\nTap to select',
                         onTap: () {
                           ref.read(selectedDeviceProvider.notifier).select(
                                 isActive ? null : d.deviceId,
@@ -196,7 +213,68 @@ class Sidebar extends ConsumerWidget {
               onTap: () => ref.read(themeModeProvider.notifier).toggle(),
             ),
           ),
-          const SizedBox(height: 8),
+          // Collapse sidebar
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8, left: 8, right: 8),
+            child: GestureDetector(
+              onTap: () =>
+                  ref.read(sidebarCollapsedProvider.notifier).state = true,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Tooltip(
+                  message: 'Collapse sidebar',
+                  child: Icon(
+                    LucideIcons.panelLeftClose,
+                    size: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+}
+
+class _CollapsedSidebar extends StatelessWidget {
+  final bool isDark;
+  final VoidCallback onExpand;
+
+  const _CollapsedSidebar({required this.isDark, required this.onExpand});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 16,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0D1117) : Colors.white,
+        border: Border(
+          right: BorderSide(
+            color: Theme.of(context).dividerColor,
+            width: 1,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 42),
+          GestureDetector(
+            onTap: onExpand,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Tooltip(
+                message: 'Expand sidebar',
+                child: Icon(
+                  LucideIcons.panelLeftOpen,
+                  size: 12,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -207,12 +285,14 @@ class _SidebarButton extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool isSelected;
+  final bool isLocked;
   final VoidCallback onTap;
 
   const _SidebarButton({
     required this.icon,
     required this.label,
     required this.isSelected,
+    this.isLocked = false,
     required this.onTap,
   });
 
@@ -269,7 +349,22 @@ class _SidebarButtonState extends State<_SidebarButton> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(widget.icon, size: 20, color: iconColor),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(widget.icon, size: 20, color: iconColor),
+                    if (widget.isLocked)
+                      Positioned(
+                        right: -6,
+                        bottom: -4,
+                        child: Icon(
+                          LucideIcons.lock,
+                          size: 9,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                  ],
+                ),
                 const SizedBox(height: 2),
                 Text(
                   widget.label,
@@ -278,7 +373,9 @@ class _SidebarButtonState extends State<_SidebarButton> {
                     fontWeight: widget.isSelected
                         ? FontWeight.w600
                         : FontWeight.w400,
-                    color: iconColor,
+                    color: widget.isLocked
+                        ? Colors.grey[600]
+                        : iconColor,
                   ),
                 ),
               ],

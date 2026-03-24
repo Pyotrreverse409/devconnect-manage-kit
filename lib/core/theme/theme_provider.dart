@@ -15,3 +15,14 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   void setDark() => state = ThemeMode.dark;
   void setLight() => state = ThemeMode.light;
 }
+
+/// Auto-scroll direction: true = scroll to bottom (newest at bottom),
+/// false = scroll to top (newest at top)
+enum ScrollDirection { bottom, top }
+
+final scrollDirectionProvider = StateProvider<ScrollDirection>(
+  (ref) => ScrollDirection.bottom,
+);
+
+/// Sidebar collapsed state
+final sidebarCollapsedProvider = StateProvider<bool>((ref) => false);

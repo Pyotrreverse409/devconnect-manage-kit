@@ -6,9 +6,11 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../components/feedback/empty_state.dart';
+import '../../../../components/inputs/scroll_direction_button.dart';
 import '../../../../components/inputs/search_field.dart';
 import '../../../../components/viewers/json_viewer.dart';
 import '../../../../core/theme/color_tokens.dart';
+import '../../../../core/theme/theme_provider.dart';
 import '../../../../models/storage/storage_entry.dart';
 import '../../provider/storage_providers.dart';
 
@@ -71,11 +73,15 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
     });
   }
 
-  void _scrollToBottom() {
+  void _scrollToTarget() {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
+        final scrollDir = ref.read(scrollDirectionProvider);
+        final target = scrollDir == ScrollDirection.top
+            ? 0.0
+            : _scrollController.position.maxScrollExtent;
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          target,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
@@ -88,7 +94,7 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
       _autoScroll = !_autoScroll;
       if (_autoScroll) {
         _maxVisible = _pageSize;
-        _scrollToBottom();
+        _scrollToTarget();
       }
     });
   }
@@ -105,7 +111,7 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
 
     // Auto-scroll when new items arrive and autoScroll is enabled
     if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
-      _scrollToBottom();
+      _scrollToTarget();
     }
     _previousCount = entries.length;
 
@@ -129,8 +135,8 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
               : Row(
                   children: [
                     // Key list
-                    SizedBox(
-                      width: selected != null ? 320 : 400,
+                    Expanded(
+                      flex: selected != null ? 2 : 1,
                       child: Column(
                         children: [
                           if (hasMore && !_autoScroll)
@@ -271,6 +277,8 @@ class _Toolbar extends ConsumerWidget {
               ),
             ),
           ),
+          const SizedBox(width: 4),
+          const ScrollDirectionButton(),
           const SizedBox(width: 8),
           SizedBox(
             width: 200,

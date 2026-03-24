@@ -5,9 +5,11 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../components/feedback/empty_state.dart';
+import '../../../../components/inputs/scroll_direction_button.dart';
 import '../../../../components/inputs/search_field.dart';
 import '../../../../components/viewers/json_viewer.dart';
 import '../../../../core/theme/color_tokens.dart';
+import '../../../../core/theme/theme_provider.dart';
 import '../../../../models/state/state_change.dart';
 import '../../provider/state_providers.dart';
 
@@ -71,10 +73,14 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
     });
   }
 
-  void _scrollToBottom() {
+  void _scrollToTarget() {
     if (_scrollController.hasClients) {
+      final scrollDir = ref.read(scrollDirectionProvider);
+      final target = scrollDir == ScrollDirection.top
+          ? 0.0
+          : _scrollController.position.maxScrollExtent;
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        target,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
       );
@@ -87,7 +93,7 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
       if (_autoScroll) {
         _maxVisible = _pageSize;
         SchedulerBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom();
+          _scrollToTarget();
         });
       }
     });
@@ -106,7 +112,7 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
     // Auto-scroll when new items arrive and autoScroll is on
     if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        _scrollToBottom();
+        _scrollToTarget();
       });
     }
     _previousCount = entries.length;
@@ -131,8 +137,8 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
               : Row(
                   children: [
                     // Timeline
-                    SizedBox(
-                      width: selected != null ? 300 : 400,
+                    Expanded(
+                      flex: selected != null ? 2 : 1,
                       child: Column(
                         children: [
                           if (hasMore && !_autoScroll)
@@ -165,8 +171,7 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
                               itemCount: visibleEntries.length,
                               itemExtent: 52,
                               itemBuilder: (context, index) {
-                                final entry = visibleEntries[
-                                    visibleEntries.length - 1 - index];
+                                final entry = visibleEntries[index];
                                 final isSelected = selected?.id == entry.id;
                                 return _StateChangeTile(
                                   key: ValueKey(entry.id),
@@ -276,6 +281,8 @@ class _Toolbar extends ConsumerWidget {
               ),
             ),
           ),
+          const SizedBox(width: 4),
+          const ScrollDirectionButton(),
           const SizedBox(width: 8),
           SizedBox(
             width: 200,

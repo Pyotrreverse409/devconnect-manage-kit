@@ -5,10 +5,12 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../components/feedback/empty_state.dart';
+import '../../../../components/inputs/scroll_direction_button.dart';
 import '../../../../components/inputs/search_field.dart';
 import '../../../../components/misc/status_badge.dart';
 import '../../../../components/viewers/json_viewer.dart';
 import '../../../../core/theme/color_tokens.dart';
+import '../../../../core/theme/theme_provider.dart';
 import '../../../../models/log/log_entry.dart';
 import '../../../../server/providers/server_providers.dart';
 import '../../provider/console_providers.dart';
@@ -95,12 +97,16 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
     final visibleEntries = entries.sublist(startIndex);
     final hasMore = startIndex > 0;
 
-    // Auto scroll to bottom only when new items arrive
+    // Auto scroll when new items arrive
+    final scrollDir = ref.watch(scrollDirectionProvider);
     if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
+          final target = scrollDir == ScrollDirection.top
+              ? 0.0
+              : _scrollController.position.maxScrollExtent;
           _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
+            target,
             duration: const Duration(milliseconds: 100),
             curve: Curves.easeOut,
           );
@@ -178,7 +184,7 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
                               padding: const EdgeInsets.symmetric(
                                   vertical: 6),
                               itemCount: visibleEntries.length,
-                              itemExtent: 44,
+                              itemExtent: 64,
                               itemBuilder: (context, index) {
                                 final entry = visibleEntries[index];
                                 final isSelected =
@@ -313,6 +319,9 @@ class _ConsoleToolbar extends ConsumerWidget {
             isActive: autoScroll,
             onTap: onToggleAutoScroll,
           ),
+          const SizedBox(width: 4),
+          // Scroll direction toggle
+          const ScrollDirectionButton(),
           const SizedBox(width: 4),
 
           // Clear

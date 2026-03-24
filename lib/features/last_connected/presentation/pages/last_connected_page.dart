@@ -301,7 +301,9 @@ class _SessionTile extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    '${d.deviceName} · ${d.osVersion}',
+                    d.deviceName != d.osVersion
+                        ? '${d.deviceName} · ${d.osVersion}'
+                        : d.osVersion,
                     style: TextStyle(
                       fontSize: 9,
                       color: Colors.grey[500],

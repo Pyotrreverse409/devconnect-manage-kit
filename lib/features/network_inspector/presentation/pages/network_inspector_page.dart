@@ -7,10 +7,12 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../components/feedback/empty_state.dart';
+import '../../../../components/inputs/scroll_direction_button.dart';
 import '../../../../components/inputs/search_field.dart';
 import '../../../../components/misc/status_badge.dart';
 import '../../../../components/viewers/json_viewer.dart';
 import '../../../../core/theme/color_tokens.dart';
+import '../../../../core/theme/theme_provider.dart';
 import '../../../../models/network/network_entry.dart';
 import '../../../../server/providers/server_providers.dart';
 import '../../provider/network_providers.dart';
@@ -31,7 +33,7 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
   static const _pageSize = 50;
 
   final _scrollController = ScrollController();
-  bool _autoScroll = false;
+  bool _autoScroll = true;
   int _maxVisible = _pageSize;
   bool _loadingMore = false;
   int _previousCount = 0;
@@ -92,12 +94,16 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
     final visibleEntries = entries.sublist(startIndex);
     final hasMore = startIndex > 0;
 
-    // Auto-scroll to bottom only when new entries arrive
+    // Auto-scroll when new entries arrive
+    final scrollDir = ref.watch(scrollDirectionProvider);
     if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
+          final target = scrollDir == ScrollDirection.top
+              ? 0.0
+              : _scrollController.position.maxScrollExtent;
           _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
+            target,
             duration: const Duration(milliseconds: 100),
             curve: Curves.easeOut,
           );
@@ -171,8 +177,7 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
                               itemCount: visibleEntries.length,
                               itemExtent: 56,
                               itemBuilder: (context, index) {
-                                final entry = visibleEntries[
-                                    visibleEntries.length - 1 - index];
+                                final entry = visibleEntries[index];
                                 final isSelected =
                                     selected?.id == entry.id;
                                 return _RequestCard(
@@ -342,6 +347,9 @@ class _Toolbar extends ConsumerWidget {
             tooltip: 'Auto-scroll',
             onTap: onToggleAutoScroll,
           ),
+          const SizedBox(width: 4),
+          // Scroll direction toggle
+          const ScrollDirectionButton(),
           const SizedBox(width: 4),
 
           // Clear button
@@ -866,6 +874,22 @@ class _RequestDetailPanel extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       _CopyActionChip(
+                        icon: LucideIcons.upload,
+                        label: 'Copy Request',
+                        onTap: () {
+                          final body = entry.requestBody;
+                          final text = body is String
+                              ? body
+                              : (body != null
+                                  ? const JsonEncoder.withIndent('  ')
+                                      .convert(body)
+                                  : '');
+                          Clipboard.setData(ClipboardData(text: text));
+                          _showCopied(context, 'Request copied');
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _CopyActionChip(
                         icon: LucideIcons.download,
                         label: 'Copy Response',
                         onTap: () {
@@ -1209,34 +1233,169 @@ class _HeaderTable extends StatelessWidget {
 // Body tab (request / response)
 // ---------------------------------------------------------------------------
 
-class _BodyTab extends StatelessWidget {
+class _BodyTab extends StatefulWidget {
   final dynamic body;
   final String label;
 
   const _BodyTab({required this.body, required this.label});
 
   @override
+  State<_BodyTab> createState() => _BodyTabState();
+}
+
+class _BodyTabState extends State<_BodyTab> {
+  bool _jsonMode = false;
+
+  @override
   Widget build(BuildContext context) {
-    if (body == null) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    if (widget.body == null) {
       return EmptyState(
         icon: LucideIcons.fileText,
-        title: 'No $label',
+        title: 'No ${widget.label}',
       );
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          if (body is Map || body is List)
-            JsonViewer(data: body, initiallyExpanded: true)
-          else
-            JsonPrettyViewer(data: body),
-        ],
-      ),
+    // Try to parse string body as JSON
+    dynamic parsedBody = widget.body;
+    if (parsedBody is String) {
+      try {
+        parsedBody = jsonDecode(parsedBody);
+      } catch (_) {
+        // Not valid JSON, keep as string
+      }
+    }
+
+    final canToggle = parsedBody is Map || parsedBody is List;
+
+    return Column(
+      children: [
+        // Toggle bar
+        Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.black.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Text(widget.label, style: theme.textTheme.titleSmall),
+              const Spacer(),
+              if (canToggle) ...[
+                GestureDetector(
+                  onTap: () => setState(() => _jsonMode = false),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: !_jsonMode
+                            ? ColorTokens.primary.withValues(alpha: 0.12)
+                            : Colors.transparent,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(5),
+                          bottomLeft: Radius.circular(5),
+                        ),
+                        border: Border.all(
+                          color: !_jsonMode
+                              ? ColorTokens.primary.withValues(alpha: 0.3)
+                              : Colors.grey.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Text(
+                        'Tree',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: !_jsonMode
+                              ? ColorTokens.primary
+                              : Colors.grey[500],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _jsonMode = true),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _jsonMode
+                            ? ColorTokens.primary.withValues(alpha: 0.12)
+                            : Colors.transparent,
+                        borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(5),
+                          bottomRight: Radius.circular(5),
+                        ),
+                        border: Border.all(
+                          color: _jsonMode
+                              ? ColorTokens.primary.withValues(alpha: 0.3)
+                              : Colors.grey.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Text(
+                        'JSON',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: _jsonMode
+                              ? ColorTokens.primary
+                              : Colors.grey[500],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 8),
+              // Copy body button
+              GestureDetector(
+                onTap: () {
+                  final text = parsedBody is String
+                      ? parsedBody
+                      : const JsonEncoder.withIndent('  ')
+                          .convert(parsedBody);
+                  Clipboard.setData(ClipboardData(text: text));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${widget.label} copied'),
+                      duration: const Duration(seconds: 1),
+                      behavior: SnackBarBehavior.floating,
+                      width: 180,
+                    ),
+                  );
+                },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Icon(LucideIcons.copy,
+                      size: 14, color: Colors.grey[500]),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Body content
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: _jsonMode || !(parsedBody is Map || parsedBody is List)
+                ? JsonPrettyViewer(data: parsedBody)
+                : JsonViewer(data: parsedBody, initiallyExpanded: true),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1261,14 +1420,14 @@ class _TimingTab extends StatelessWidget {
         children: [
           _InfoRow(
             'Start Time',
-            DateFormat('HH:mm:ss.SSS').format(
+            DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
               DateTime.fromMillisecondsSinceEpoch(entry.startTime),
             ),
           ),
           if (entry.endTime != null)
             _InfoRow(
               'End Time',
-              DateFormat('HH:mm:ss.SSS').format(
+              DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
                 DateTime.fromMillisecondsSinceEpoch(entry.endTime!),
               ),
             ),

@@ -114,12 +114,15 @@ class DevConnectClient {
   }
 
   static String _defaultDeviceName() {
+    // Use localHostname for a meaningful device name (e.g., "Johns-iPhone")
+    final hostname = Platform.localHostname;
+    if (hostname.isNotEmpty && hostname != 'localhost') return hostname;
     if (Platform.isAndroid) return 'Android Device';
     if (Platform.isIOS) return 'iOS Device';
     if (Platform.isMacOS) return 'macOS';
     if (Platform.isWindows) return 'Windows';
     if (Platform.isLinux) return 'Linux';
-    return Platform.localHostname;
+    return 'Unknown Device';
   }
 
   /// UDP discovery port — server broadcasts beacons here.

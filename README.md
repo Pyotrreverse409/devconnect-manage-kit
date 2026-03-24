@@ -1,12 +1,125 @@
+<div align="center">
+
 # DevConnect
 
-Desktop debugging & inspection tool for **Flutter**, **React Native**, and **Android Native** apps.
+### A modern, cross-platform alternative to Reactotron and Flipper
 
-Like Reactotron, but better UI, multi-platform, and auto-detect everything.
+**Debug Flutter, React Native & Android apps — network, state, logs, storage, database — all in one beautiful desktop tool.**
+
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/ridelinktechs/devconnect/releases)
+[![Flutter](https://img.shields.io/badge/Flutter-SDK-02569B?logo=flutter)](client_sdks/devconnect_flutter)
+[![React Native](https://img.shields.io/badge/React%20Native-SDK-61DAFB?logo=react)](client_sdks/devconnect-react-native)
+[![Android](https://img.shields.io/badge/Android-SDK-3DDC84?logo=android)](client_sdks/devconnect-android)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+[Features](#features) · [Download](#download) · [Quick Start](#quick-start) · [Why DevConnect?](#why-devconnect) · [SDKs](#flutter-sdk)
+
+</div>
+
+---
+
+## Why DevConnect?
+
+If you've used **Reactotron**, **Flipper**, or **Flutter DevTools** — you know they're powerful but limited to one framework. DevConnect is a **single desktop app** that works with all of them.
+
+| | DevConnect | Reactotron | Flipper | Flutter DevTools |
+|---|:---:|:---:|:---:|:---:|
+| Flutter support | ✅ | ❌ | ⚠️ plugin | ✅ |
+| React Native support | ✅ | ✅ | ✅ | ❌ |
+| Android Native support | ✅ | ❌ | ✅ | ❌ |
+| Network inspector | ✅ | ✅ | ✅ | ✅ |
+| State debugging | ✅ Redux/MobX/Zustand/BLoC/Riverpod/GetX | ✅ Redux/MobX | ✅ | ❌ |
+| Log viewer | ✅ | ✅ | ✅ | ✅ |
+| Storage viewer | ✅ | ✅ | ✅ | ❌ |
+| Database browser | ✅ | ❌ | ✅ | ❌ |
+| Benchmark timing | ✅ | ✅ | ❌ | ✅ |
+| Custom commands | ✅ | ✅ | ❌ | ❌ |
+| Multi-device | ✅ | ❌ | ✅ | ❌ |
+| Zero-config setup | ✅ auto-detect | ❌ manual | ⚠️ | ⚠️ |
+| macOS + Windows | ✅ | ✅ | ⚠️ deprecated | ✅ |
+| Dark + Light theme | ✅ | ✅ | ✅ | ✅ |
+| Active maintenance | ✅ | ⚠️ slow | ❌ deprecated | ✅ |
+
+> **TL;DR** — One tool to replace Reactotron + Flipper + DevTools. Works with Flutter, React Native, and Android Native. Auto-detects everything.
+
+---
+
+## Features
+
+- **Network Inspector** — HTTP request/response viewer with headers, body (tree + JSON), timing bar, copy as cURL, status badges
+- **State Inspector** — Real-time state change timeline with before/after diff for Redux, MobX, Zustand, Jotai, Valtio, XState, BLoC, Riverpod, GetX, Provider, ViewModel, StateFlow, LiveData
+- **Console / Logs** — Log viewer with level filters (debug/info/warn/error), search, tags, metadata, stack traces
+- **Storage Viewer** — Browse and monitor SharedPreferences, AsyncStorage, Hive, MMKV, SecureStorage, DataStore
+- **Database Browser** — SQLite, Drift, Room, Isar table viewer with SQL query editor
+- **Benchmark** — Performance timing with step markers
+- **Custom Commands** — Send commands from desktop to app and get results
+- **Multi-Device** — Connect multiple apps simultaneously, per-device filtering
+- **All Events** — Unified timeline of all events across features
+- **Screenshot** — Full-content screenshot capture of any detail panel
+- **ADB Reverse** — One-click USB connection for Android devices
+- **Auto-detect** — SDK auto-discovers desktop IP, zero configuration needed
+- **Dual Theme** — Dark and light mode
+
+<!-- TODO: Add screenshots
+### Screenshots
+
+| Dark Theme | Light Theme |
+|---|---|
+| ![dark](docs/screenshots/dark.png) | ![light](docs/screenshots/light.png) |
+-->
+
+---
+
+## Download
+
+| Platform | File | Architecture |
+|----------|------|-------------|
+| macOS | `DevConnect-macOS-v1.0.0-universal.dmg` | arm64 + x86_64 |
+| Windows | `DevConnect-Windows-v1.0.0.zip` | x64 |
+
+Download from [Releases](https://github.com/ridelinktechs/devconnect/releases).
+
+---
+
+## Quick Start
+
+### Flutter — 2 lines
+
+```dart
+import 'package:devconnect_flutter/devconnect_flutter.dart';
+
+void main() async {
+  await DevConnect.initAndRunApp(
+    appName: 'MyApp',
+    runApp: () => runApp(const MyApp()),
+  );
+  // Done. Network + logs auto-captured.
+}
+```
+
+### React Native — 1 line
+
+```typescript
+import { DevConnect } from 'devconnect-react-native';
+
+await DevConnect.init({ appName: 'MyApp' });
+// Done. fetch + XHR + console auto-captured.
+```
+
+### Android Native — 1 line
+
+```kotlin
+// Application.onCreate()
+DevConnect.init(context = this, appName = "MyApp")
+```
+
+That's it. Open DevConnect desktop, run your app, and everything appears.
 
 ---
 
 ## Desktop App
+
+### Build from source
 
 ### Download
 
@@ -794,6 +907,44 @@ Or manually: `adb reverse tcp:9090 tcp:9090`
 - **Protocol**: JSON over WebSocket (default port 9090)
 - **SDKs**: Flutter (pub.dev / git), React Native (npm / git), Android (Maven / JitPack / AAR)
 
+---
+
+## Contributing
+
+Contributions welcome! Feel free to open issues or pull requests.
+
+```bash
+git clone https://github.com/ridelinktechs/devconnect.git
+cd devconnect
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter run -d macos
+```
+
+---
+
+## Related Projects & Alternatives
+
+Looking for mobile debugging tools? Here's how DevConnect compares:
+
+- **[Reactotron](https://github.com/infinitered/reactotron)** — Great for React Native + Redux, but no Flutter/Android support. DevConnect covers all three.
+- **[Flipper](https://github.com/facebook/flipper)** — Facebook's extensible debugger, now deprecated. DevConnect is actively maintained.
+- **[Flutter DevTools](https://docs.flutter.dev/tools/devtools)** — Official Flutter debugging, but no React Native or Android Native. DevConnect adds cross-platform support.
+
+> Searching for: *reactotron alternative*, *flipper replacement*, *flutter debugging tool*, *react native debugger*, *android debug inspector*, *mobile app debugger*, *cross-platform debugging*, *network inspector*, *state debugger*, *redux devtools mobile*? DevConnect is built for you.
+
+---
+
 ## License
 
 MIT - by [buivietphi](https://github.com/buivietphi)
+
+---
+
+<div align="center">
+
+**DevConnect** — Debug Flutter, React Native & Android apps from one desktop tool.
+
+*A modern alternative to Reactotron, Flipper, and platform-specific debugging tools.*
+
+</div>

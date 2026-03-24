@@ -395,10 +395,35 @@ export class DevConnect {
     const version = Platform.Version; // e.g. '17.4' (iOS) or 34 (Android API level)
     const osLabel = os === 'ios' ? 'iOS' : os === 'android' ? 'Android' : os;
 
+    // Get actual device model name
+    let deviceModel = `${osLabel} Device`;
+    try {
+      if (os === 'ios') {
+        // iOS: get model name from PlatformConstants
+        const constants = (NativeModules.PlatformConstants || NativeModules.DeviceInfo) as Record<string, any> | undefined;
+        const iosModel = constants?.interfaceIdiom;
+        const systemName = constants?.systemName;
+        if (systemName) {
+          deviceModel = `${systemName} Device`;
+        } else if (iosModel) {
+          deviceModel = iosModel === 'phone' ? 'iPhone' : iosModel === 'pad' ? 'iPad' : iosModel;
+        }
+      } else if (os === 'android') {
+        // Android: get model from PlatformConstants
+        const constants = (NativeModules.PlatformConstants || Platform.constants) as Record<string, any> | undefined;
+        const model = constants?.Model || constants?.Brand;
+        if (model) {
+          deviceModel = model;
+        }
+      }
+    } catch (_) {
+      // Fallback to generic name
+    }
+
     this.send('client:handshake', {
       deviceInfo: {
         deviceId: this.deviceId,
-        deviceName: `${osLabel} ${version}`,
+        deviceName: deviceModel,
         platform: 'react_native',
         osVersion: `${osLabel} ${version}`,
         appName: this.config.appName,

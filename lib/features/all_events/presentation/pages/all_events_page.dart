@@ -1,21 +1,31 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' hide ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../components/feedback/empty_state.dart';
+import '../../../../components/inputs/scroll_direction_button.dart';
 import '../../../../components/inputs/search_field.dart';
 import '../../../../components/misc/status_badge.dart';
 import '../../../../components/viewers/json_viewer.dart';
+import '../../../../core/providers/tab_visibility_provider.dart';
 import '../../../../core/theme/color_tokens.dart';
+import '../../../../core/theme/theme_provider.dart';
 import '../../../../models/log/log_entry.dart';
 import '../../../../models/network/network_entry.dart';
 import '../../../../models/state/state_change.dart';
 import '../../../../models/storage/storage_entry.dart';
 import '../../../../server/providers/server_providers.dart';
+import '../../../console/provider/console_providers.dart';
+import '../../../network_inspector/provider/network_providers.dart';
+import '../../../state_inspector/provider/state_providers.dart';
+import '../../../storage_viewer/provider/storage_providers.dart';
 import '../../provider/all_events_provider.dart';
 
 // ═══════════════════════════════════════════════
@@ -83,10 +93,14 @@ class _AllEventsPageState extends ConsumerState<AllEventsPage> {
     });
   }
 
-  void _scrollToBottom() {
+  void _scrollToTarget() {
     if (_scrollController.hasClients) {
+      final scrollDir = ref.read(scrollDirectionProvider);
+      final target = scrollDir == ScrollDirection.top
+          ? 0.0
+          : _scrollController.position.maxScrollExtent;
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        target,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
       );
@@ -99,12 +113,16 @@ class _AllEventsPageState extends ConsumerState<AllEventsPage> {
       if (_autoScroll) {
         _maxVisible = _pageSize;
         WidgetsBinding.instance
-            .addPostFrameCallback((_) => _scrollToBottom());
+            .addPostFrameCallback((_) => _scrollToTarget());
       }
     });
   }
 
   void _clearAll() {
+    ref.read(consoleEntriesProvider.notifier).clear();
+    ref.read(networkEntriesProvider.notifier).clear();
+    ref.read(stateChangesProvider.notifier).clear();
+    ref.read(storageEntriesProvider.notifier).clear();
     setState(() {
       _selectedEvent = null;
       _maxVisible = _pageSize;
@@ -131,7 +149,7 @@ class _AllEventsPageState extends ConsumerState<AllEventsPage> {
         allEvents.length > _previousCount &&
         allEvents.isNotEmpty) {
       WidgetsBinding.instance
-          .addPostFrameCallback((_) => _scrollToBottom());
+          .addPostFrameCallback((_) => _scrollToTarget());
     }
     _previousCount = allEvents.length;
 
@@ -269,6 +287,23 @@ class _Header extends ConsumerWidget {
     required this.onClear,
   });
 
+  List<Widget> _buildDeviceChips(WidgetRef ref) {
+    final devices = ref.watch(connectedDevicesProvider);
+    if (devices.isEmpty) return [];
+    return devices.map((d) {
+      final label = d.deviceName != d.osVersion
+          ? '${d.deviceName} · ${d.osVersion}'
+          : d.osVersion;
+      return Padding(
+        padding: const EdgeInsets.only(left: 6),
+        child: _StatusPill(
+          color: const Color(0xFF8B5CF6),
+          label: '${d.appName} — $label',
+        ),
+      );
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -337,6 +372,8 @@ class _Header extends ConsumerWidget {
             color: deviceCount > 0 ? ColorTokens.info : Colors.grey,
             label: '$deviceCount device${deviceCount != 1 ? 's' : ''}',
           ),
+          // Show connected device info
+          ..._buildDeviceChips(ref),
 
           const Spacer(),
 
@@ -348,6 +385,8 @@ class _Header extends ConsumerWidget {
             color: ColorTokens.primary,
             onTap: onToggleAutoScroll,
           ),
+          const SizedBox(width: 4),
+          const ScrollDirectionButton(),
           const SizedBox(width: 6),
           // Search
           SizedBox(
@@ -356,6 +395,27 @@ class _Header extends ConsumerWidget {
               hintText: 'Search events...',
               onChanged: (v) =>
                   ref.read(allEventsSearchProvider.notifier).state = v,
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Clear all
+          GestureDetector(
+            onTap: onClear,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Tooltip(
+                message: 'Clear all events',
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    color: Colors.grey.withValues(alpha: 0.08),
+                  ),
+                  child: Icon(LucideIcons.trash2,
+                      size: 14, color: Colors.grey[500]),
+                ),
+              ),
             ),
           ),
         ],
@@ -377,12 +437,66 @@ class _FilterBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final activeFilters = ref.watch(allEventsFilterProvider);
+    final enabledTabs = ref.watch(tabVisibilityProvider);
 
     final logCount = events.where((e) => e.type == EventType.log).length;
     final netCount = events.where((e) => e.type == EventType.network).length;
     final stateCount = events.where((e) => e.type == EventType.state).length;
     final storeCount = events.where((e) => e.type == EventType.storage).length;
     final errorCount = events.where((e) => e.level == 'error').length;
+
+    // Only show filter chips for enabled tabs
+    final chips = <Widget>[];
+    if (enabledTabs.contains(TabKey.console)) {
+      chips.add(_FilterChip(
+        label: 'LOG',
+        count: logCount,
+        icon: LucideIcons.terminal,
+        color: ColorTokens.logInfo,
+        isActive: activeFilters.contains(EventType.log),
+        onTap: () => _toggle(ref, EventType.log),
+      ));
+    }
+    if (enabledTabs.contains(TabKey.network)) {
+      if (chips.isNotEmpty) chips.add(const SizedBox(width: 6));
+      chips.add(_FilterChip(
+        label: 'API',
+        count: netCount,
+        icon: LucideIcons.globe,
+        color: ColorTokens.success,
+        isActive: activeFilters.contains(EventType.network),
+        onTap: () => _toggle(ref, EventType.network),
+      ));
+    }
+    if (enabledTabs.contains(TabKey.state)) {
+      if (chips.isNotEmpty) chips.add(const SizedBox(width: 6));
+      chips.add(_FilterChip(
+        label: 'STATE',
+        count: stateCount,
+        icon: LucideIcons.layers,
+        color: ColorTokens.secondary,
+        isActive: activeFilters.contains(EventType.state),
+        onTap: () => _toggle(ref, EventType.state),
+      ));
+    }
+    if (enabledTabs.contains(TabKey.storage)) {
+      if (chips.isNotEmpty) chips.add(const SizedBox(width: 6));
+      chips.add(_FilterChip(
+        label: 'STORE',
+        count: storeCount,
+        icon: LucideIcons.database,
+        color: ColorTokens.warning,
+        isActive: activeFilters.contains(EventType.storage),
+        onTap: () => _toggle(ref, EventType.storage),
+      ));
+    }
+
+    final visibleFilterCount =
+        activeFilters.where((t) {
+          final tabKey = _eventToTab(t);
+          return tabKey == null || enabledTabs.contains(tabKey);
+        }).length;
+    final totalVisible = enabledTabs.length.clamp(0, EventType.values.length);
 
     return Container(
       height: 40,
@@ -399,41 +513,7 @@ class _FilterBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          _FilterChip(
-            label: 'LOG',
-            count: logCount,
-            icon: LucideIcons.terminal,
-            color: ColorTokens.logInfo,
-            isActive: activeFilters.contains(EventType.log),
-            onTap: () => _toggle(ref, EventType.log),
-          ),
-          const SizedBox(width: 6),
-          _FilterChip(
-            label: 'API',
-            count: netCount,
-            icon: LucideIcons.globe,
-            color: ColorTokens.success,
-            isActive: activeFilters.contains(EventType.network),
-            onTap: () => _toggle(ref, EventType.network),
-          ),
-          const SizedBox(width: 6),
-          _FilterChip(
-            label: 'STATE',
-            count: stateCount,
-            icon: LucideIcons.layers,
-            color: ColorTokens.secondary,
-            isActive: activeFilters.contains(EventType.state),
-            onTap: () => _toggle(ref, EventType.state),
-          ),
-          const SizedBox(width: 6),
-          _FilterChip(
-            label: 'STORE',
-            count: storeCount,
-            icon: LucideIcons.database,
-            color: ColorTokens.warning,
-            isActive: activeFilters.contains(EventType.storage),
-            onTap: () => _toggle(ref, EventType.storage),
-          ),
+          ...chips,
           if (errorCount > 0) ...[
             const SizedBox(width: 10),
             Container(
@@ -454,9 +534,8 @@ class _FilterBar extends ConsumerWidget {
             ),
           ],
           const Spacer(),
-          // Show all / only active
           Text(
-            '${activeFilters.length}/${EventType.values.length} filters',
+            '$visibleFilterCount/$totalVisible filters',
             style: TextStyle(
               fontSize: 10,
               color: Colors.grey[500],
@@ -465,6 +544,19 @@ class _FilterBar extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  TabKey? _eventToTab(EventType type) {
+    switch (type) {
+      case EventType.log:
+        return TabKey.console;
+      case EventType.network:
+        return TabKey.network;
+      case EventType.state:
+        return TabKey.state;
+      case EventType.storage:
+        return TabKey.storage;
+    }
   }
 
   void _toggle(WidgetRef ref, EventType type) {
@@ -924,11 +1016,525 @@ class _LoadMoreBanner extends StatelessWidget {
 // Detail Panel
 // ═══════════════════════════════════════════════
 
-class _EventDetailPanel extends StatelessWidget {
+class _EventDetailPanel extends StatefulWidget {
   final UnifiedEvent event;
   final VoidCallback onClose;
 
   const _EventDetailPanel({required this.event, required this.onClose});
+
+  @override
+  State<_EventDetailPanel> createState() => _EventDetailPanelState();
+}
+
+class _EventDetailPanelState extends State<_EventDetailPanel> {
+  Future<void> _takeScreenshot() async {
+    try {
+      final overlayKey = GlobalKey();
+      final theme = Theme.of(context);
+      final isDark = theme.brightness == Brightness.dark;
+
+      // Build full content without scroll constraints for offscreen capture
+      final screenshotWidget = _buildScreenshotWidget(theme, isDark);
+
+      late OverlayEntry overlayEntry;
+      overlayEntry = OverlayEntry(
+        builder: (_) => Positioned(
+          left: -10000,
+          top: 0,
+          child: RepaintBoundary(
+            key: overlayKey,
+            child: Theme(
+              data: theme,
+              child: Material(
+                child: SizedBox(
+                  width: 600,
+                  child: screenshotWidget,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      Overlay.of(context).insert(overlayEntry);
+
+      // Wait for layout to complete
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      final boundary = overlayKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) {
+        overlayEntry.remove();
+        return;
+      }
+
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      overlayEntry.remove();
+
+      if (byteData == null) return;
+
+      final pngBytes = byteData.buffer.asUint8List();
+      final dir = await Directory.systemTemp.createTemp('devconnect_');
+      final file = File(
+          '${dir.path}/detail_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(pngBytes);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Screenshot saved: ${file.path}'),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Screenshot failed: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Builds the full detail widget for screenshot (no scroll constraints).
+  Widget _buildScreenshotWidget(ThemeData theme, bool isDark) {
+    final event = widget.event;
+    final time = DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
+      DateTime.fromMillisecondsSinceEpoch(event.timestamp),
+    );
+
+    Color typeColor;
+    IconData typeIcon;
+    String typeLabel;
+    switch (event.type) {
+      case EventType.log:
+        typeColor = ColorTokens.logInfo;
+        typeIcon = LucideIcons.terminal;
+        typeLabel = 'Log Detail';
+        break;
+      case EventType.network:
+        typeColor = ColorTokens.success;
+        typeIcon = LucideIcons.globe;
+        typeLabel = 'Network Detail';
+        break;
+      case EventType.state:
+        typeColor = ColorTokens.secondary;
+        typeIcon = LucideIcons.layers;
+        typeLabel = 'State Detail';
+        break;
+      case EventType.storage:
+        typeColor = ColorTokens.warning;
+        typeIcon = LucideIcons.database;
+        typeLabel = 'Storage Detail';
+        break;
+    }
+
+    return Container(
+      color: isDark ? const Color(0xFF0D1117) : const Color(0xFFF6F8FA),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF161B22) : Colors.white,
+            ),
+            child: Row(
+              children: [
+                Icon(typeIcon, size: 14, color: typeColor),
+                const SizedBox(width: 8),
+                Text(
+                  typeLabel,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: typeColor,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  time,
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 10,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          _buildScreenshotContent(isDark),
+        ],
+      ),
+    );
+  }
+
+  /// Content for screenshot — no SingleChildScrollView, no Expanded.
+  /// Tabbed views are rendered as stacked sections.
+  Widget _buildScreenshotContent(bool isDark) {
+    switch (widget.event.type) {
+      case EventType.log:
+        if (widget.event.rawData is LogEntry) {
+          return _logScreenshot(widget.event.rawData as LogEntry, isDark);
+        }
+        return _fallbackScreenshot(widget.event, isDark);
+      case EventType.network:
+        if (widget.event.rawData is NetworkEntry) {
+          return _networkScreenshot(
+              widget.event.rawData as NetworkEntry, isDark);
+        }
+        return _fallbackScreenshot(widget.event, isDark);
+      case EventType.state:
+        if (widget.event.rawData is StateChange) {
+          return _stateScreenshot(
+              widget.event.rawData as StateChange, isDark);
+        }
+        return _fallbackScreenshot(widget.event, isDark);
+      case EventType.storage:
+        if (widget.event.rawData is StorageEntry) {
+          return _storageScreenshot(
+              widget.event.rawData as StorageEntry, isDark);
+        }
+        return _fallbackScreenshot(widget.event, isDark);
+    }
+  }
+
+  Widget _logScreenshot(LogEntry entry, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            LogLevelBadge(level: entry.level.name),
+            if (entry.tag != null) ...[
+              const SizedBox(width: 8),
+              _TagChip(entry.tag!),
+            ],
+          ]),
+          const SizedBox(height: 16),
+          const _SectionLabel('Message'),
+          const SizedBox(height: 6),
+          _CodeBlock(text: entry.message, isDark: isDark),
+          if (entry.metadata != null && entry.metadata!.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const _SectionLabel('Metadata'),
+            const SizedBox(height: 6),
+            JsonViewer(data: entry.metadata, initiallyExpanded: true),
+          ],
+          if (entry.stackTrace != null) ...[
+            const SizedBox(height: 16),
+            const _SectionLabel('Stack Trace'),
+            const SizedBox(height: 6),
+            _ErrorBlock(text: entry.stackTrace!, isDark: isDark),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _networkScreenshot(NetworkEntry entry, bool isDark) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // URL bar
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF161B22) : Colors.white,
+            border: Border(
+              bottom: BorderSide(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              HttpMethodBadge(method: entry.method),
+              const SizedBox(width: 8),
+              if (entry.isComplete) ...[
+                StatusBadge(statusCode: entry.statusCode),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  entry.url,
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 11,
+                    color:
+                        isDark ? const Color(0xFFE6EDF3) : Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Timing summary
+        if (entry.duration != null)
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: _TimingBar(duration: entry.duration!),
+          ),
+        const Divider(height: 1),
+        // Headers
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _SectionLabel('REQUEST HEADERS'),
+              const SizedBox(height: 8),
+              _HeaderTable(headers: entry.requestHeaders),
+              const SizedBox(height: 20),
+              const _SectionLabel('RESPONSE HEADERS'),
+              const SizedBox(height: 8),
+              _HeaderTable(headers: entry.responseHeaders),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Request body
+        if (entry.requestBody != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SectionLabel('REQUEST BODY'),
+                const SizedBox(height: 8),
+                if (entry.requestBody is Map || entry.requestBody is List)
+                  JsonViewer(
+                      data: entry.requestBody, initiallyExpanded: true)
+                else
+                  JsonPrettyViewer(data: entry.requestBody),
+              ],
+            ),
+          ),
+        if (entry.requestBody != null) const Divider(height: 1),
+        // Response body
+        if (entry.responseBody != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SectionLabel('RESPONSE BODY'),
+                const SizedBox(height: 8),
+                if (entry.responseBody is Map ||
+                    entry.responseBody is List)
+                  JsonViewer(
+                      data: entry.responseBody, initiallyExpanded: true)
+                else
+                  JsonPrettyViewer(data: entry.responseBody),
+              ],
+            ),
+          ),
+        if (entry.responseBody != null) const Divider(height: 1),
+        // Timing details
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _SectionLabel('TIMING'),
+              const SizedBox(height: 8),
+              _InfoRow(
+                'Start Time',
+                DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
+                  DateTime.fromMillisecondsSinceEpoch(entry.startTime),
+                ),
+              ),
+              if (entry.endTime != null)
+                _InfoRow(
+                  'End Time',
+                  DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
+                    DateTime.fromMillisecondsSinceEpoch(entry.endTime!),
+                  ),
+                ),
+              if (entry.duration != null)
+                _InfoRow('Duration', '${entry.duration}ms'),
+              if (entry.error != null) ...[
+                const SizedBox(height: 12),
+                const _SectionLabel('Error'),
+                const SizedBox(height: 6),
+                _ErrorBlock(text: entry.error!, isDark: isDark),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _stateScreenshot(StateChange entry, bool isDark) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              _TagChip(entry.stateManagerType,
+                  color: ColorTokens.secondary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  entry.actionName,
+                  style: const TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Diff
+        if (entry.diff.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SectionLabel('DIFF'),
+                const SizedBox(height: 8),
+                ...entry.diff.map((d) => _DiffRow(diff: d)),
+              ],
+            ),
+          ),
+        if (entry.diff.isNotEmpty) const Divider(height: 1),
+        // Previous state
+        if (entry.previousState.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SectionLabel('PREVIOUS STATE'),
+                const SizedBox(height: 8),
+                JsonViewer(
+                    data: entry.previousState, initiallyExpanded: true),
+              ],
+            ),
+          ),
+        if (entry.previousState.isNotEmpty) const Divider(height: 1),
+        // Next state
+        if (entry.nextState.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SectionLabel('NEXT STATE'),
+                const SizedBox(height: 8),
+                JsonViewer(
+                    data: entry.nextState, initiallyExpanded: true),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _storageScreenshot(StorageEntry entry, bool isDark) {
+    Color opColor;
+    switch (entry.operation.toLowerCase()) {
+      case 'write':
+        opColor = ColorTokens.success;
+        break;
+      case 'read':
+        opColor = ColorTokens.info;
+        break;
+      case 'delete':
+      case 'clear':
+        opColor = ColorTokens.error;
+        break;
+      default:
+        opColor = ColorTokens.warning;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            _TagChip(entry.operation.toUpperCase(), color: opColor),
+            const SizedBox(width: 8),
+            _TagChip(entry.storageType.name, color: ColorTokens.warning),
+          ]),
+          const SizedBox(height: 16),
+          const _SectionLabel('Key'),
+          const SizedBox(height: 6),
+          _CodeBlock(text: entry.key, isDark: isDark),
+          if (entry.value != null) ...[
+            const SizedBox(height: 16),
+            const _SectionLabel('Value'),
+            const SizedBox(height: 6),
+            if (entry.value is Map || entry.value is List)
+              JsonViewer(data: entry.value, initiallyExpanded: true)
+            else
+              _CodeBlock(text: '${entry.value}', isDark: isDark),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _fallbackScreenshot(UnifiedEvent event, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionLabel('Title'),
+          const SizedBox(height: 6),
+          _CodeBlock(text: event.title, isDark: isDark),
+          const SizedBox(height: 16),
+          const _SectionLabel('Details'),
+          const SizedBox(height: 6),
+          _CodeBlock(text: event.subtitle, isDark: isDark),
+          if (event.rawData != null) ...[
+            const SizedBox(height: 16),
+            const _SectionLabel('Raw Data'),
+            const SizedBox(height: 6),
+            if (event.rawData is Map || event.rawData is List)
+              JsonViewer(data: event.rawData, initiallyExpanded: true)
+            else
+              _CodeBlock(text: '${event.rawData}', isDark: isDark),
+          ],
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -938,7 +1544,11 @@ class _EventDetailPanel extends StatelessWidget {
       color: isDark ? const Color(0xFF0D1117) : const Color(0xFFF6F8FA),
       child: Column(
         children: [
-          _DetailHeader(event: event, onClose: onClose),
+          _DetailHeader(
+            event: widget.event,
+            onClose: widget.onClose,
+            onScreenshot: _takeScreenshot,
+          ),
           const Divider(height: 1),
           Expanded(child: _buildContent()),
         ],
@@ -947,27 +1557,27 @@ class _EventDetailPanel extends StatelessWidget {
   }
 
   Widget _buildContent() {
-    switch (event.type) {
+    switch (widget.event.type) {
       case EventType.log:
-        if (event.rawData is LogEntry) {
-          return _LogDetail(entry: event.rawData as LogEntry);
+        if (widget.event.rawData is LogEntry) {
+          return _LogDetail(entry: widget.event.rawData as LogEntry);
         }
-        return _FallbackDetail(event: event);
+        return _FallbackDetail(event: widget.event);
       case EventType.network:
-        if (event.rawData is NetworkEntry) {
-          return _NetworkDetail(entry: event.rawData as NetworkEntry);
+        if (widget.event.rawData is NetworkEntry) {
+          return _NetworkDetail(entry: widget.event.rawData as NetworkEntry);
         }
-        return _FallbackDetail(event: event);
+        return _FallbackDetail(event: widget.event);
       case EventType.state:
-        if (event.rawData is StateChange) {
-          return _StateDetail(entry: event.rawData as StateChange);
+        if (widget.event.rawData is StateChange) {
+          return _StateDetail(entry: widget.event.rawData as StateChange);
         }
-        return _FallbackDetail(event: event);
+        return _FallbackDetail(event: widget.event);
       case EventType.storage:
-        if (event.rawData is StorageEntry) {
-          return _StorageDetail(entry: event.rawData as StorageEntry);
+        if (widget.event.rawData is StorageEntry) {
+          return _StorageDetail(entry: widget.event.rawData as StorageEntry);
         }
-        return _FallbackDetail(event: event);
+        return _FallbackDetail(event: widget.event);
     }
   }
 }
@@ -975,13 +1585,18 @@ class _EventDetailPanel extends StatelessWidget {
 class _DetailHeader extends ConsumerWidget {
   final UnifiedEvent event;
   final VoidCallback onClose;
+  final VoidCallback onScreenshot;
 
-  const _DetailHeader({required this.event, required this.onClose});
+  const _DetailHeader({
+    required this.event,
+    required this.onClose,
+    required this.onScreenshot,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final time = DateFormat('HH:mm:ss.SSS').format(
+    final time = DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
       DateTime.fromMillisecondsSinceEpoch(event.timestamp),
     );
 
@@ -1023,21 +1638,11 @@ class _DetailHeader extends ConsumerWidget {
             ),
           ),
           const Spacer(),
-          // Copy all as JSON
+          // Screenshot
           _ActionButton(
-            icon: LucideIcons.braces,
-            label: 'JSON',
-            onTap: () {
-              final json = const JsonEncoder.withIndent('  ')
-                  .convert(_eventToJson(event));
-              Clipboard.setData(ClipboardData(text: json));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('JSON copied'),
-                  duration: Duration(milliseconds: 800),
-                ),
-              );
-            },
+            icon: LucideIcons.camera,
+            label: 'Screenshot',
+            onTap: onScreenshot,
           ),
           const SizedBox(width: 6),
           GestureDetector(
@@ -1081,17 +1686,6 @@ class _DetailHeader extends ConsumerWidget {
     }
   }
 
-  Map<String, dynamic> _eventToJson(UnifiedEvent e) {
-    return {
-      'type': e.type.name,
-      'id': e.id,
-      'deviceId': e.deviceId,
-      'timestamp': e.timestamp,
-      'title': e.title,
-      'subtitle': e.subtitle,
-      'level': e.level,
-    };
-  }
 }
 
 class _ActionButton extends StatelessWidget {
@@ -1493,31 +2087,137 @@ class _HeaderTable extends StatelessWidget {
   }
 }
 
-class _BodyView extends StatelessWidget {
+class _BodyView extends StatefulWidget {
   final dynamic body;
   final String label;
 
   const _BodyView({required this.body, required this.label});
 
   @override
+  State<_BodyView> createState() => _BodyViewState();
+}
+
+class _BodyViewState extends State<_BodyView> {
+  bool _jsonMode = false;
+
+  @override
   Widget build(BuildContext context) {
-    if (body == null) {
-      return EmptyState(icon: LucideIcons.fileText, title: 'No $label');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (widget.body == null) {
+      return EmptyState(icon: LucideIcons.fileText, title: 'No ${widget.label}');
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionLabel(label),
-          const SizedBox(height: 8),
-          if (body is Map || body is List)
-            JsonViewer(data: body, initiallyExpanded: true)
-          else
-            JsonPrettyViewer(data: body),
-        ],
-      ),
+    // Try to parse string body as JSON
+    dynamic parsedBody = widget.body;
+    if (parsedBody is String) {
+      try {
+        parsedBody = jsonDecode(parsedBody);
+      } catch (_) {}
+    }
+
+    final canToggle = parsedBody is Map || parsedBody is List;
+
+    return Column(
+      children: [
+        Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.black.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              _SectionLabel(widget.label),
+              const Spacer(),
+              if (canToggle) ...[
+                GestureDetector(
+                  onTap: () => setState(() => _jsonMode = false),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: !_jsonMode
+                            ? ColorTokens.primary.withValues(alpha: 0.12)
+                            : Colors.transparent,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(5),
+                          bottomLeft: Radius.circular(5),
+                        ),
+                        border: Border.all(
+                          color: !_jsonMode
+                              ? ColorTokens.primary.withValues(alpha: 0.3)
+                              : Colors.grey.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Text(
+                        'Tree',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: !_jsonMode
+                              ? ColorTokens.primary
+                              : Colors.grey[500],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _jsonMode = true),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _jsonMode
+                            ? ColorTokens.primary.withValues(alpha: 0.12)
+                            : Colors.transparent,
+                        borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(5),
+                          bottomRight: Radius.circular(5),
+                        ),
+                        border: Border.all(
+                          color: _jsonMode
+                              ? ColorTokens.primary.withValues(alpha: 0.3)
+                              : Colors.grey.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Text(
+                        'JSON',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: _jsonMode
+                              ? ColorTokens.primary
+                              : Colors.grey[500],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: _jsonMode || !(parsedBody is Map || parsedBody is List)
+                ? JsonPrettyViewer(data: parsedBody)
+                : JsonViewer(data: parsedBody, initiallyExpanded: true),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1536,14 +2236,14 @@ class _TimingView extends StatelessWidget {
         children: [
           _InfoRow(
             'Start Time',
-            DateFormat('HH:mm:ss.SSS').format(
+            DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
               DateTime.fromMillisecondsSinceEpoch(entry.startTime),
             ),
           ),
           if (entry.endTime != null)
             _InfoRow(
               'End Time',
-              DateFormat('HH:mm:ss.SSS').format(
+              DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
                 DateTime.fromMillisecondsSinceEpoch(entry.endTime!),
               ),
             ),

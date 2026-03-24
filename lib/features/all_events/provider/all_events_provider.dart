@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/tab_visibility_provider.dart';
 import '../../../server/providers/server_providers.dart';
 import '../../console/provider/console_providers.dart';
 import '../../network_inspector/provider/network_providers.dart';
@@ -50,6 +51,7 @@ bool _isSystemUrl(String url) {
 }
 
 final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
+  final enabledTabs = ref.watch(tabVisibilityProvider);
   final logs = ref.watch(consoleEntriesProvider);
   final network = ref.watch(networkEntriesProvider);
   final stateChanges = ref.watch(stateChangesProvider);
@@ -57,66 +59,74 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
 
   final events = <UnifiedEvent>[];
 
-  for (final log in logs) {
-    events.add(UnifiedEvent(
-      type: EventType.log,
-      id: log.id,
-      deviceId: log.deviceId,
-      timestamp: log.timestamp,
-      title: log.message,
-      subtitle: log.tag ?? 'log',
-      level: log.level.name,
-      rawData: log,
-    ));
+  if (enabledTabs.contains(TabKey.console)) {
+    for (final log in logs) {
+      events.add(UnifiedEvent(
+        type: EventType.log,
+        id: log.id,
+        deviceId: log.deviceId,
+        timestamp: log.timestamp,
+        title: log.message,
+        subtitle: log.tag ?? 'log',
+        level: log.level.name,
+        rawData: log,
+      ));
+    }
   }
 
-  for (final req in network) {
-    // Filter out system/connectivity check URLs
-    if (_isSystemUrl(req.url)) continue;
+  if (enabledTabs.contains(TabKey.network)) {
+    for (final req in network) {
+      // Filter out system/connectivity check URLs
+      if (_isSystemUrl(req.url)) continue;
 
-    events.add(UnifiedEvent(
-      type: EventType.network,
-      id: req.id,
-      deviceId: req.deviceId,
-      timestamp: req.startTime,
-      title: '${req.method} ${_shortenUrl(req.url)}',
-      subtitle: req.isComplete
-          ? '${req.statusCode} - ${req.duration ?? 0}ms'
-          : 'pending...',
-      level: req.isComplete
-          ? (req.statusCode >= 400 ? 'error' : 'info')
-          : 'debug',
-      rawData: req,
-    ));
+      events.add(UnifiedEvent(
+        type: EventType.network,
+        id: req.id,
+        deviceId: req.deviceId,
+        timestamp: req.startTime,
+        title: '${req.method} ${_shortenUrl(req.url)}',
+        subtitle: req.isComplete
+            ? '${req.statusCode} - ${req.duration ?? 0}ms'
+            : 'pending...',
+        level: req.isComplete
+            ? (req.statusCode >= 400 ? 'error' : 'info')
+            : 'debug',
+        rawData: req,
+      ));
+    }
   }
 
-  for (final sc in stateChanges) {
-    events.add(UnifiedEvent(
-      type: EventType.state,
-      id: sc.id,
-      deviceId: sc.deviceId,
-      timestamp: sc.timestamp,
-      title: sc.actionName,
-      subtitle: '${sc.stateManagerType} - ${sc.diff.length} changes',
-      level: 'info',
-      rawData: sc,
-    ));
+  if (enabledTabs.contains(TabKey.state)) {
+    for (final sc in stateChanges) {
+      events.add(UnifiedEvent(
+        type: EventType.state,
+        id: sc.id,
+        deviceId: sc.deviceId,
+        timestamp: sc.timestamp,
+        title: sc.actionName,
+        subtitle: '${sc.stateManagerType} - ${sc.diff.length} changes',
+        level: 'info',
+        rawData: sc,
+      ));
+    }
   }
 
-  for (final st in storage) {
-    events.add(UnifiedEvent(
-      type: EventType.storage,
-      id: st.id,
-      deviceId: st.deviceId,
-      timestamp: st.timestamp,
-      title: '${st.operation.toUpperCase()} ${st.key}',
-      subtitle: st.storageType.name,
-      level: st.operation == 'delete' ? 'warn' : 'info',
-      rawData: st,
-    ));
+  if (enabledTabs.contains(TabKey.storage)) {
+    for (final st in storage) {
+      events.add(UnifiedEvent(
+        type: EventType.storage,
+        id: st.id,
+        deviceId: st.deviceId,
+        timestamp: st.timestamp,
+        title: '${st.operation.toUpperCase()} ${st.key}',
+        subtitle: st.storageType.name,
+        level: st.operation == 'delete' ? 'warn' : 'info',
+        rawData: st,
+      ));
+    }
   }
 
-  events.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  events.sort((a, b) => a.timestamp.compareTo(b.timestamp));
   return events;
 });
 
