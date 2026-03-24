@@ -18,6 +18,9 @@ class WsMessageHandler {
   final _storageController = StreamController<StorageEntry>.broadcast();
   final _deviceController = StreamController<DeviceInfo>.broadcast();
   final _disconnectController = StreamController<String>.broadcast();
+  final _benchmarkController = StreamController<Map<String, dynamic>>.broadcast();
+  final _stateSnapshotController = StreamController<Map<String, dynamic>>.broadcast();
+  final _customResultController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<LogEntry> get onLog => _logController.stream;
   Stream<NetworkEntry> get onNetwork => _networkController.stream;
@@ -25,6 +28,9 @@ class WsMessageHandler {
   Stream<StorageEntry> get onStorage => _storageController.stream;
   Stream<DeviceInfo> get onDeviceConnected => _deviceController.stream;
   Stream<String> get onDeviceDisconnected => _disconnectController.stream;
+  Stream<Map<String, dynamic>> get onBenchmark => _benchmarkController.stream;
+  Stream<Map<String, dynamic>> get onStateSnapshot => _stateSnapshotController.stream;
+  Stream<Map<String, dynamic>> get onCustomResult => _customResultController.stream;
 
   WsMessageHandler({required this.server}) {
     server.onMessage.listen(_handleMessage);
@@ -48,7 +54,62 @@ class WsMessageHandler {
       case WsMessageTypes.clientStorageAllData:
         _handleStorage(message);
         break;
+      case WsMessageTypes.clientBenchmark:
+        _benchmarkController.add({
+          'deviceId': message.deviceId,
+          ...message.payload,
+        });
+        break;
+      case WsMessageTypes.clientStateSnapshot:
+        _stateSnapshotController.add({
+          'deviceId': message.deviceId,
+          ...message.payload,
+        });
+        break;
+      case WsMessageTypes.clientCustom:
+      case WsMessageTypes.clientCustomCommandResult:
+        _customResultController.add({
+          'deviceId': message.deviceId,
+          'correlationId': message.correlationId,
+          ...message.payload,
+        });
+        break;
     }
+  }
+
+  // ---- Server -> Client commands ----
+
+  /// Dispatch a Redux action to the app
+  void dispatchReduxAction(String deviceId, Map<String, dynamic> action) {
+    server.sendToDevice(deviceId, DCMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      type: WsMessageTypes.serverReduxDispatch,
+      deviceId: 'server',
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      payload: {'action': action},
+    ));
+  }
+
+  /// Restore state snapshot on the app
+  void restoreState(String deviceId, Map<String, dynamic> state) {
+    server.sendToDevice(deviceId, DCMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      type: WsMessageTypes.serverStateRestore,
+      deviceId: 'server',
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      payload: {'state': state},
+    ));
+  }
+
+  /// Send a custom command to the app
+  void sendCustomCommand(String deviceId, String command, {Map<String, dynamic>? args}) {
+    server.sendToDevice(deviceId, DCMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      type: WsMessageTypes.serverCustomCommand,
+      deviceId: 'server',
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      payload: {'command': command, if (args != null) 'args': args},
+    ));
   }
 
   void _handleLog(DCMessage message) {
@@ -169,5 +230,8 @@ class WsMessageHandler {
     _storageController.close();
     _deviceController.close();
     _disconnectController.close();
+    _benchmarkController.close();
+    _stateSnapshotController.close();
+    _customResultController.close();
   }
 }

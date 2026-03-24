@@ -1,8 +1,15 @@
 package com.devconnect
 
 import com.devconnect.client.WebSocketClient
+import com.devconnect.interceptors.DevConnectKermitWriter
+import com.devconnect.interceptors.DevConnectKtorPlugin
+import com.devconnect.interceptors.DevConnectNapierAntilog
 import com.devconnect.interceptors.OkHttpInterceptor
+import com.devconnect.reporters.DataStoreReporter
 import com.devconnect.reporters.LogReporter
+import com.devconnect.reporters.MmkvReporter
+import com.devconnect.reporters.RoomReporter
+import com.devconnect.reporters.DevConnectStateObserver
 import com.devconnect.reporters.SharedPrefsReporter
 import org.json.JSONObject
 import java.util.UUID
@@ -39,6 +46,23 @@ import java.util.UUID
  *     .build()
  * ```
  *
+ * ## With Ktor:
+ * ```kotlin
+ * val client = HttpClient {
+ *     install(DevConnectKtorPlugin)
+ * }
+ * ```
+ *
+ * ## With Kermit (KMP logger):
+ * ```kotlin
+ * Logger.addLogWriter(DevConnectKermitWriter())
+ * ```
+ *
+ * ## With Napier (KMP logger):
+ * ```kotlin
+ * Napier.base(DevConnectNapierAntilog())
+ * ```
+ *
  * ## Firebase / OAuth2:
  * Firebase and OAuth2 use OkHttp internally on Android.
  * If you set DevConnect's interceptor on your OkHttpClient,
@@ -55,29 +79,52 @@ object DevConnect {
      * @param context Android Context (Application preferred)
      * @param appName Your app's name
      * @param appVersion Your app's version
-     * @param host DevConnect desktop IP (default: 10.0.2.2 for emulator, localhost for device)
+     * @param host Desktop IP. null or "auto" for auto-detection.
      * @param port WebSocket port (default: 9090)
+     * @param auto Auto-detect host if not specified (default: true)
      * @param enabled Set false to disable in production
+     *
+     * Auto-detection tries: 10.0.2.2 (emulator) -> 10.0.3.2 (Genymotion) -> localhost -> 127.0.0.1
      */
     fun init(
         context: Any,
         appName: String,
         appVersion: String = "1.0.0",
-        host: String = "10.0.2.2", // Android emulator -> host machine
+        host: String? = null,
         port: Int = 9090,
+        auto: Boolean = true,
         enabled: Boolean = true
     ) {
         this.enabled = enabled
         if (!enabled) return
 
+        val resolvedHost = if (host == null || host == "auto") {
+            if (auto) autoDetectHost(port) else "10.0.2.2"
+        } else {
+            host
+        }
+
         client = WebSocketClient(
-            host = host,
+            host = resolvedHost,
             port = port,
             deviceId = deviceId,
             appName = appName,
             appVersion = appVersion
         )
         client?.connect()
+    }
+
+    private fun autoDetectHost(port: Int): String {
+        val candidates = listOf("10.0.2.2", "10.0.3.2", "localhost", "127.0.0.1")
+        for (candidate in candidates) {
+            try {
+                val socket = java.net.Socket()
+                socket.connect(java.net.InetSocketAddress(candidate, port), 500)
+                socket.close()
+                return candidate
+            } catch (_: Exception) {}
+        }
+        return "10.0.2.2" // fallback for emulator
     }
 
     fun isConnected(): Boolean = client?.isConnected == true
@@ -97,9 +144,47 @@ object DevConnect {
      */
     fun okHttpInterceptor(): OkHttpInterceptor = OkHttpInterceptor()
 
+    // ---- Ktor Plugin ----
+
+    /**
+     * Returns the Ktor HttpClient plugin for capturing network requests.
+     *
+     * ```kotlin
+     * val client = HttpClient {
+     *     install(DevConnect.ktorPlugin())
+     * }
+     * ```
+     *
+     * Or use the plugin object directly:
+     * ```kotlin
+     * val client = HttpClient {
+     *     install(DevConnectKtorPlugin)
+     * }
+     * ```
+     */
+    fun ktorPlugin(): DevConnectKtorPlugin = DevConnectKtorPlugin
+
     // ---- Logging ----
 
     fun logger(tag: String? = null): LogReporter = LogReporter(tag)
+
+    /**
+     * Returns a Kermit LogWriter that sends logs to DevConnect.
+     *
+     * ```kotlin
+     * Logger.addLogWriter(DevConnect.kermitWriter())
+     * ```
+     */
+    fun kermitWriter(): DevConnectKermitWriter = DevConnectKermitWriter()
+
+    /**
+     * Returns a Napier Antilog that sends logs to DevConnect.
+     *
+     * ```kotlin
+     * Napier.base(DevConnect.napierAntilog())
+     * ```
+     */
+    fun napierAntilog(): DevConnectNapierAntilog = DevConnectNapierAntilog()
 
     fun log(message: String, tag: String? = null, metadata: Map<String, Any>? = null) {
         send("client:log", buildPayload {
@@ -145,6 +230,19 @@ object DevConnect {
 
     // ---- State Management ----
 
+    /**
+     * Get the StateFlow/LiveData observer for reporting state changes.
+     *
+     * ```kotlin
+     * // StateFlow
+     * DevConnect.stateObserver().observe(scope, stateFlow, "UserState")
+     *
+     * // LiveData
+     * DevConnect.stateObserver().observe(lifecycleOwner, liveData, "UserState")
+     * ```
+     */
+    fun stateObserver(): DevConnectStateObserver = DevConnectStateObserver
+
     fun reportStateChange(
         stateManager: String,
         action: String,
@@ -170,6 +268,40 @@ object DevConnect {
      * ```
      */
     fun sharedPrefsReporter(): SharedPrefsReporter = SharedPrefsReporter()
+
+    /**
+     * Get a DataStore (Preferences) reporter.
+     *
+     * ```kotlin
+     * val reporter = DevConnect.dataStoreReporter()
+     * reporter.reportWrite("darkMode", true)
+     * reporter.reportRead("darkMode", true)
+     * ```
+     */
+    fun dataStoreReporter(): DataStoreReporter = DataStoreReporter()
+
+    /**
+     * Get a Room database reporter.
+     *
+     * ```kotlin
+     * val reporter = DevConnect.roomReporter()
+     * reporter.reportQuery("SELECT * FROM users", results)
+     * reporter.reportInsert("users", rowId)
+     * ```
+     */
+    fun roomReporter(): RoomReporter = RoomReporter()
+
+    /**
+     * Get an MMKV storage reporter.
+     *
+     * ```kotlin
+     * val reporter = DevConnect.mmkvReporter()
+     * reporter.reportWrite("token", "abc123")
+     * reporter.reportRead("token", "abc123")
+     * reporter.reportDelete("token")
+     * ```
+     */
+    fun mmkvReporter(): MmkvReporter = MmkvReporter()
 
     fun reportStorageOperation(
         storageType: String,
@@ -231,6 +363,48 @@ object DevConnect {
             responseBody?.let { put("responseBody", it) }
             error?.let { put("error", it) }
         })
+    }
+
+    // ---- Benchmark API ----
+
+    private val benchmarks = mutableMapOf<String, MutableList<Long>>()
+
+    fun benchmarkStart(title: String) {
+        benchmarks[title] = mutableListOf(System.currentTimeMillis())
+    }
+
+    fun benchmarkStep(title: String) {
+        benchmarks[title]?.add(System.currentTimeMillis())
+    }
+
+    fun benchmarkStop(title: String) {
+        val times = benchmarks.remove(title) ?: return
+        val startTime = times.first()
+        val endTime = System.currentTimeMillis()
+
+        send("client:benchmark", buildPayload {
+            put("title", title)
+            put("startTime", startTime)
+            put("endTime", endTime)
+            put("duration", endTime - startTime)
+        })
+    }
+
+    // ---- State snapshot ----
+
+    fun sendStateSnapshot(stateManager: String, state: Map<String, Any>) {
+        send("client:state:snapshot", buildPayload {
+            put("stateManager", stateManager)
+            put("state", JSONObject(state))
+        })
+    }
+
+    // ---- Custom commands ----
+
+    private val commandHandlers = mutableMapOf<String, (Map<String, Any>?) -> Any?>()
+
+    fun registerCommand(name: String, handler: (Map<String, Any>?) -> Any?) {
+        commandHandlers[name] = handler
     }
 
     // ---- Log (internal, used by DCLog/Timber/LogInterceptor) ----

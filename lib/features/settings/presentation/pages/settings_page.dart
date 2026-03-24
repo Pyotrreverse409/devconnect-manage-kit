@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -17,6 +20,7 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   late TextEditingController _portController;
+  List<String> _localIPs = [];
 
   @override
   void initState() {
@@ -24,6 +28,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _portController = TextEditingController(
       text: '${AppConstants.defaultPort}',
     );
+    _loadLocalIPs();
+  }
+
+  Future<void> _loadLocalIPs() async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      final ips = <String>[];
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            ips.add(addr.address);
+          }
+        }
+      }
+      if (mounted) setState(() => _localIPs = ips);
+    } catch (_) {}
   }
 
   @override
@@ -65,6 +85,55 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               _InfoRow('Server Status', server.isRunning ? 'Running' : 'Stopped'),
               _InfoRow('Port', '${server.isRunning ? server.port : AppConstants.defaultPort}'),
               _InfoRow('Connected Devices', '${devices.length}'),
+              if (_localIPs.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('Your IP (for real device connection)',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                const SizedBox(height: 4),
+                ..._localIPs.map((ip) => GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: ip));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Copied $ip'),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: ColorTokens.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: ColorTokens.primary.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                ip,
+                                style: const TextStyle(
+                                  fontFamily: 'JetBrains Mono',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: ColorTokens.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(LucideIcons.copy,
+                                  size: 12, color: Colors.grey[500]),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )),
+              ],
             ],
           ),
           const SizedBox(height: 20),
@@ -162,6 +231,193 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ),
                 ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Android ADB
+          _SettingsSection(
+            title: 'Android Device (USB)',
+            icon: LucideIcons.usb,
+            children: [
+              Text(
+                'For Android real device connected via USB, run adb reverse to forward the port:',
+                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () {
+                  final port = server.isRunning
+                      ? server.port
+                      : AppConstants.defaultPort;
+                  Clipboard.setData(
+                    ClipboardData(
+                        text: 'adb reverse tcp:$port tcp:$port'),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Copied to clipboard'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF161B22)
+                          : const Color(0xFFF0F0F0),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: theme.dividerColor),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'adb reverse tcp:${server.isRunning ? server.port : AppConstants.defaultPort} tcp:${server.isRunning ? server.port : AppConstants.defaultPort}',
+                            style: const TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 13,
+                              color: ColorTokens.secondary,
+                            ),
+                          ),
+                        ),
+                        Icon(LucideIcons.copy,
+                            size: 14, color: Colors.grey[500]),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final port = server.isRunning
+                          ? server.port
+                          : AppConstants.defaultPort;
+                      try {
+                        final result = await Process.run(
+                          'adb',
+                          ['reverse', 'tcp:$port', 'tcp:$port'],
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result.exitCode == 0
+                                    ? 'adb reverse OK - Android device can now connect via localhost:$port'
+                                    : 'adb error: ${result.stderr}',
+                              ),
+                              backgroundColor: result.exitCode == 0
+                                  ? ColorTokens.success
+                                  : ColorTokens.error,
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'adb not found. Install Android SDK tools first.'),
+                              backgroundColor: ColorTokens.error,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(LucideIcons.refreshCw, size: 14),
+                    label: const Text('Run ADB Reverse'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: ColorTokens.secondary,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      try {
+                        final result =
+                            await Process.run('adb', ['devices']);
+                        if (mounted) {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('ADB Devices'),
+                              content: Text(
+                                result.stdout.toString().trim(),
+                                style: const TextStyle(
+                                  fontFamily: 'JetBrains Mono',
+                                  fontSize: 12,
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(ctx),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('adb not found'),
+                              backgroundColor: ColorTokens.error,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(LucideIcons.smartphone, size: 14),
+                    label: const Text('ADB Devices'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDark
+                          ? const Color(0xFF21262D)
+                          : Colors.grey[300],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Connection Guide
+          _SettingsSection(
+            title: 'How to Connect',
+            icon: LucideIcons.circleHelp,
+            children: [
+              _ConnectionGuideStep(
+                number: '1',
+                title: 'Install SDK in your app',
+                code: 'Flutter:  flutter pub add devconnect_flutter\n'
+                    'RN:      yarn add devconnect-react-native\n'
+                    'Android: implementation("com.github.ridelinktechs...")',
+              ),
+              _ConnectionGuideStep(
+                number: '2',
+                title: 'Init in your app code',
+                code: 'Flutter:  await DevConnect.init(appName: "MyApp");\n'
+                    'RN:      await DevConnect.init({ appName: "MyApp" });\n'
+                    'Android: DevConnect.init(context, appName = "MyApp")',
+              ),
+              _ConnectionGuideStep(
+                number: '3',
+                title: 'Connect',
+                code: 'Emulator/Simulator: auto-detect (no config needed)\n'
+                    'Real device WiFi:   host: "${_localIPs.isNotEmpty ? _localIPs.first : "your-pc-ip"}"\n'
+                    'Real device USB:    click "Run ADB Reverse" above',
               ),
             ],
           ),
@@ -288,6 +544,82 @@ class _SettingRow extends StatelessWidget {
             ),
           ),
           child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ConnectionGuideStep extends StatelessWidget {
+  final String number;
+  final String title;
+  final String code;
+
+  const _ConnectionGuideStep({
+    required this.number,
+    required this.title,
+    required this.code,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: ColorTokens.primary.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: ColorTokens.primary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF161B22)
+                        : const Color(0xFFF0F0F0),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: SelectableText(
+                    code,
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 11,
+                      color: isDark ? const Color(0xFF8B949E) : Colors.black87,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -5,10 +5,17 @@ import 'package:flutter/widgets.dart';
 
 import 'devconnect_client.dart';
 import 'interceptors/dio_interceptor.dart';
+import 'interceptors/getx_interceptor.dart';
 import 'interceptors/http_client_interceptor.dart';
 import 'interceptors/log_interceptor.dart';
+import 'interceptors/loggy_interceptor.dart';
 import 'interceptors/navigation_observer.dart';
+import 'reporters/drift_reporter.dart';
+import 'reporters/isar_reporter.dart';
 import 'reporters/log_reporter.dart';
+import 'reporters/mmkv_reporter.dart';
+import 'reporters/secure_storage_reporter.dart';
+import 'reporters/signals_observer.dart';
 import 'reporters/storage_reporter.dart';
 
 /// DevConnect Flutter SDK - Main entry point.
@@ -73,8 +80,9 @@ class DevConnect {
     required String appName,
     required void Function() runApp,
     String appVersion = '1.0.0',
-    String host = 'localhost',
+    String? host,
     int port = 9090,
+    bool auto_ = true,
     bool enabled = true,
   }) async {
     WidgetsFlutterBinding.ensureInitialized();
@@ -89,6 +97,7 @@ class DevConnect {
       appVersion: appVersion,
       host: host,
       port: port,
+      auto_: auto_,
     );
 
     // Intercept ALL HTTP traffic globally
@@ -99,12 +108,16 @@ class DevConnect {
   }
 
   /// Initialize DevConnect and connect to desktop app.
+  ///
+  /// [host] - Desktop IP. Leave null for auto-detect.
+  /// [auto_] - Auto-detect host if [host] is null (default: true).
   static Future<void> init({
     required String appName,
     String appVersion = '1.0.0',
-    String host = 'localhost',
+    String? host,
     int port = 9090,
     String platform = 'flutter',
+    bool auto_ = true,
     bool enabled = true,
   }) async {
     if (!enabled || _initialized) return;
@@ -115,6 +128,7 @@ class DevConnect {
       port: port,
       appName: appName,
       appVersion: appVersion,
+      auto_: auto_,
       deviceName: Platform.localHostname,
       platform: platform,
     );
@@ -191,6 +205,37 @@ class DevConnect {
       client.error(message,
           tag: tag, stackTrace: stackTrace, metadata: metadata);
 
+  // ---- GetX / GetConnect ----
+
+  /// GetConnect request modifier that captures outgoing HTTP requests.
+  ///
+  /// ```dart
+  /// httpClient.addRequestModifier(DevConnect.getConnectModifier());
+  /// ```
+  static dynamic Function(dynamic) getConnectModifier() {
+    return DevConnectGetConnectInterceptor().requestModifier();
+  }
+
+  /// GetConnect response modifier that captures HTTP responses.
+  ///
+  /// ```dart
+  /// httpClient.addResponseModifier(DevConnect.getConnectResponseModifier());
+  /// ```
+  static dynamic Function(dynamic, dynamic) getConnectResponseModifier() {
+    return DevConnectGetConnectInterceptor().responseModifier();
+  }
+
+  /// Returns a GetConnect interceptor instance for full control.
+  ///
+  /// ```dart
+  /// final interceptor = DevConnect.getConnectInterceptor();
+  /// httpClient.addRequestModifier(interceptor.requestModifier());
+  /// httpClient.addResponseModifier(interceptor.responseModifier());
+  /// ```
+  static DevConnectGetConnectInterceptor getConnectInterceptor() {
+    return DevConnectGetConnectInterceptor();
+  }
+
   // ---- Storage ----
 
   static DevConnectStorage sharedPreferencesReporter() {
@@ -201,7 +246,83 @@ class DevConnect {
     return const DevConnectStorage(storageType: 'hive');
   }
 
+  /// Reporter for flutter_secure_storage read/write/delete operations.
+  ///
+  /// Values are masked by default for security.
+  ///
+  /// ```dart
+  /// final reporter = DevConnect.secureStorageReporter();
+  /// reporter.reportWrite('token', value: 'abc123');
+  /// reporter.reportRead('token', value: token);
+  /// reporter.reportDelete('token');
+  /// ```
+  static DevConnectSecureStorageReporter secureStorageReporter({
+    bool maskValues = true,
+  }) {
+    return DevConnectSecureStorageReporter(maskValues: maskValues);
+  }
+
+  /// Reporter for MMKV key-value storage operations.
+  ///
+  /// ```dart
+  /// final reporter = DevConnect.mmkvReporter();
+  /// reporter.reportWrite('username', value: 'john');
+  /// reporter.reportRead('username', value: username);
+  /// reporter.reportDelete('username');
+  /// ```
+  static DevConnectMmkvReporter mmkvReporter({String? mmkvId}) {
+    return DevConnectMmkvReporter(mmkvId: mmkvId);
+  }
+
+  // ---- Database ----
+
+  /// Reporter for Drift (moor) database queries.
+  ///
+  /// ```dart
+  /// final reporter = DevConnect.driftReporter();
+  /// reporter.reportQuery(sql: 'SELECT * FROM users', duration: elapsed);
+  /// ```
+  static DevConnectDriftReporter driftReporter() {
+    return DevConnectDriftReporter();
+  }
+
+  /// Wraps a Drift QueryExecutor to automatically report all SQL queries.
+  ///
+  /// ```dart
+  /// @DriftDatabase(tables: [Todos])
+  /// class AppDatabase extends _$AppDatabase {
+  ///   AppDatabase(QueryExecutor e) : super(DevConnect.driftQueryExecutor(e));
+  /// }
+  /// ```
+  static DevConnectDriftExecutor driftQueryExecutor(dynamic innerExecutor) {
+    return DevConnectDriftExecutor(innerExecutor);
+  }
+
+  /// Reporter for Isar database operations.
+  ///
+  /// ```dart
+  /// final reporter = DevConnect.isarReporter();
+  /// reporter.reportPut('users', id, data: user.toJson());
+  /// reporter.reportQuery('users', filter: 'where().findAll()', resultCount: 10);
+  /// reporter.reportDelete('users', 42);
+  /// ```
+  static DevConnectIsarReporter isarReporter() {
+    return DevConnectIsarReporter();
+  }
+
   // ---- State Management ----
+
+  /// Observer for signals / flutter_signals that reports signal value changes.
+  ///
+  /// ```dart
+  /// final observer = DevConnect.signalsObserver();
+  /// observer.reportChange('counter', newValue: counter.value);
+  /// // Or auto-observe:
+  /// observer.observe('counter', counter);
+  /// ```
+  static DevConnectSignalsObserver signalsObserver() {
+    return DevConnectSignalsObserver();
+  }
 
   static void reportStateChange({
     required String stateManager,
@@ -217,5 +338,25 @@ class DevConnect {
       nextState: nextState,
       diff: diff,
     );
+  }
+
+  // ---- Loggy ----
+
+  /// Returns a LoggyPrinter-compatible printer that sends logs to DevConnect.
+  ///
+  /// ```dart
+  /// Loggy.initLoggy(
+  ///   logPrinter: DevConnect.loggyPrinter(),
+  /// );
+  /// ```
+  ///
+  /// Chain with another printer:
+  /// ```dart
+  /// Loggy.initLoggy(
+  ///   logPrinter: DevConnect.loggyPrinter(innerPrinter: const PrettyPrinter()),
+  /// );
+  /// ```
+  static DevConnectLoggyPrinter loggyPrinter({dynamic innerPrinter}) {
+    return DevConnectLoggyPrinter(innerPrinter: innerPrinter);
   }
 }

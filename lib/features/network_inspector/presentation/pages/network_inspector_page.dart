@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -307,9 +309,49 @@ class _RequestDetailPanel extends StatelessWidget {
                         icon: const Icon(Icons.copy, size: 14),
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: entry.url));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('URL copied'), duration: Duration(seconds: 1)),
+                          );
                         },
                         splashRadius: 14,
                         tooltip: 'Copy URL',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.terminal, size: 14),
+                        onPressed: () {
+                          final curl = _buildCurl(entry);
+                          Clipboard.setData(ClipboardData(text: curl));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('cURL copied'), duration: Duration(seconds: 1)),
+                          );
+                        },
+                        splashRadius: 14,
+                        tooltip: 'Copy as cURL',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.upload_outlined, size: 14),
+                        onPressed: () {
+                          final req = _buildRequestCopy(entry);
+                          Clipboard.setData(ClipboardData(text: req));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Request copied'), duration: Duration(seconds: 1)),
+                          );
+                        },
+                        splashRadius: 14,
+                        tooltip: 'Copy Request',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.download_outlined, size: 14),
+                        onPressed: () {
+                          final body = entry.responseBody;
+                          final text = body is String ? body : (body != null ? const JsonEncoder.withIndent('  ').convert(body) : '');
+                          Clipboard.setData(ClipboardData(text: text));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Response copied'), duration: Duration(seconds: 1)),
+                          );
+                        },
+                        splashRadius: 14,
+                        tooltip: 'Copy Response',
                       ),
                     ],
                   ),
@@ -351,6 +393,37 @@ class _RequestDetailPanel extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _buildCurl(NetworkEntry entry) {
+    final buf = StringBuffer("curl -X ${entry.method} '${entry.url}'");
+    entry.requestHeaders.forEach((k, v) {
+      buf.write(" \\\n  -H '${k}: ${v}'");
+    });
+    if (entry.requestBody != null) {
+      final body = entry.requestBody is String
+          ? entry.requestBody as String
+          : const JsonEncoder().convert(entry.requestBody);
+      buf.write(" \\\n  -d '${body}'");
+    }
+    return buf.toString();
+  }
+
+  String _buildRequestCopy(NetworkEntry entry) {
+    final buf = StringBuffer('${entry.method} ${entry.url}\n\n');
+    if (entry.requestHeaders.isNotEmpty) {
+      buf.writeln('--- Headers ---');
+      entry.requestHeaders.forEach((k, v) => buf.writeln('$k: $v'));
+      buf.writeln();
+    }
+    if (entry.requestBody != null) {
+      buf.writeln('--- Body ---');
+      final body = entry.requestBody is String
+          ? entry.requestBody as String
+          : const JsonEncoder.withIndent('  ').convert(entry.requestBody);
+      buf.writeln(body);
+    }
+    return buf.toString();
   }
 }
 

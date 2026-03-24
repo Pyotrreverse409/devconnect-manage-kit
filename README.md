@@ -2,83 +2,50 @@
 
 Desktop debugging & inspection tool for **Flutter**, **React Native**, and **Android Native** apps.
 
-Like Reactotron, but with better UI, dual theme support, and multi-platform coverage.
-
-```
-┌─────────────────────────────────────────────┐
-│              DevConnect Desktop              │
-│  ┌─────────┐ ┌───────────────────────────┐  │
-│  │ Sidebar │ │     Feature Panels        │  │
-│  │         │ │  Network | State | Logs   │  │
-│  │         │ │  Storage | Database       │  │
-│  └─────────┘ └───────────────────────────┘  │
-│  ┌─────────────────────────────────────────┐│
-│  │     WebSocket Server (port 9090)        ││
-│  └─────────────────────────────────────────┘│
-└─────────────────────────────────────────────┘
-        ▲            ▲            ▲
-   ┌────┴───┐  ┌─────┴────┐  ┌───┴──────┐
-   │Flutter │  │React     │  │Android   │
-   │  App   │  │Native App│  │Native App│
-   └────────┘  └──────────┘  └──────────┘
-```
+Like Reactotron, but better UI, multi-platform, and auto-detect everything.
 
 ---
 
-## 1. Desktop App - Download & Open
+## Desktop App
 
-### macOS (Apple Silicon + Intel)
+### Download
 
-Download **`DevConnect-macOS-v1.0.0-universal.dmg`** from [Releases](https://github.com/ridelinktechs/devconnect/releases).
+| Platform | File | Architecture |
+|----------|------|-------------|
+| macOS | `DevConnect-macOS-v1.0.0-universal.dmg` | arm64 + x86_64 |
+| Windows | `DevConnect-Windows-v1.0.0.zip` | x64 |
 
-Open DMG, drag `DevConnect.app` to Applications. Done.
-
-> Supports both **arm64** (M1/M2/M3/M4) and **x86_64** (Intel) - universal binary.
-
-### Windows
-
-Download **`DevConnect-Windows-v1.0.0.zip`** from [Releases](https://github.com/ridelinktechs/devconnect/releases).
-
-Extract and run `DevConnect.exe`. Done.
+Download from [Releases](https://github.com/ridelinktechs/devconnect/releases).
 
 ### Build from source
 
 ```bash
 git clone https://github.com/ridelinktechs/devconnect.git
 cd devconnect
-
-# macOS
-./scripts/build_macos.sh
-# -> dist/macos/DevConnect.app
-# -> dist/macos/DevConnect-macOS-v1.0.0-universal.dmg
-
-# Windows
-./scripts/build_windows.sh
-# -> dist/windows/devconnect.exe
+flutter build macos --release   # macOS
+flutter build windows --release # Windows
 ```
 
 ### Features
 
-- **Console/Logs** - Real-time log viewer with level filters, search, auto-scroll
-- **Network Inspector** - Request/response viewer with headers, body, timing
-- **State Inspector** - State change timeline with before/after diff
-- **Storage Viewer** - SharedPreferences, AsyncStorage, Hive browser
-- **Database Viewer** - SQLite browser with SQL query editor
-- **Dual Theme** - Dark / Light mode
-- **Multi-device** - Connect multiple apps simultaneously
+- Console/Logs - real-time log viewer, level filters, search, clear
+- Network Inspector - request/response, headers, body, timing, copy cURL, copy response
+- State Inspector - state change timeline, before/after diff, snapshot + restore
+- Storage Viewer - SharedPreferences, AsyncStorage, Hive, MMKV, SecureStorage
+- Database Viewer - SQLite, Drift, Room, Isar with query editor
+- Benchmark - performance timing with steps
+- Custom Commands - send commands from desktop to app
+- Device Panel - connected devices with platform badge, OS version
+- ADB Reverse - one-click for Android USB
+- Port Config - change WebSocket port in Settings
+- Auto-detect Host - SDK auto-finds desktop IP
+- Dual Theme - dark / light
 
 ---
 
-## 2. Flutter SDK
+## Flutter SDK
 
 ### Install
-
-```bash
-# From pub.dev (after published)
-flutter pub add devconnect_flutter
-```
-
-Or from GitHub:
 
 ```yaml
 # pubspec.yaml
@@ -89,12 +56,13 @@ dependencies:
       path: client_sdks/devconnect_flutter
 ```
 
-### Quick Start
+### Init
 
 ```dart
 import 'package:devconnect_flutter/devconnect_flutter.dart';
 
 void main() async {
+  // Auto-detect: captures all HTTP + logs automatically
   await DevConnect.initAndRunApp(
     appName: 'MyApp',
     runApp: () => runApp(const MyApp()),
@@ -102,69 +70,49 @@ void main() async {
 }
 ```
 
-Done. This single call auto-captures:
-- ALL `print()` / `debugPrint()` calls
-- ALL HTTP traffic (http, Dio, Chopper, GraphQL, Firebase, OAuth2...)
-- Filters out framework/system logs
-
-### Manual Setup (more control)
+### Config
 
 ```dart
-import 'dart:io';
-import 'package:devconnect_flutter/devconnect_flutter.dart';
+await DevConnect.initAndRunApp(
+  appName: 'MyApp',
+  runApp: () => runApp(const MyApp()),
+  appVersion: '1.0.0',
+  host: null,              // null = auto-detect, '192.168.1.100' = manual
+  port: 9090,              // default: 9090
+  enabled: true,           // false = disable (production)
+);
+```
 
+### Manual Setup
+
+```dart
 void main() async {
-  // 1. Connect to DevConnect desktop
   await DevConnect.init(appName: 'MyApp');
-
-  // 2. Intercept ALL HTTP globally
-  HttpOverrides.global = DevConnect.httpOverrides();
-
-  // 3. Capture logs + run app
-  DevConnect.runZoned(() => runApp(const MyApp()));
+  HttpOverrides.global = DevConnect.httpOverrides(); // intercept all HTTP
+  DevConnect.runZoned(() => runApp(const MyApp()));   // capture logs
 }
 ```
 
-### Network - Auto-captured HTTP Libraries
+### Network
 
-`HttpOverrides.global = DevConnect.httpOverrides()` captures everything:
-
-| Library | Auto? |
-|---------|-------|
-| `http` package | Auto |
-| `Dio` | Auto |
-| `Chopper` | Auto |
-| `Retrofit` (chopper/dio) | Auto |
-| `graphql_flutter` / `ferry` / `artemis` | Auto |
-| Firebase REST API | Auto |
-| OAuth2 (`oauth2`, `flutter_appauth`) | Auto |
-| `Image.network()` | Auto |
-| gRPC-web | Auto |
-
-Optional Dio-specific interceptor:
+Auto-captured via `HttpOverrides`: http, Dio, Chopper, Retrofit, GraphQL, Firebase, OAuth2, gRPC-web, Image.network.
 
 ```dart
-final dio = Dio();
+// Dio (optional, for extra detail)
 dio.interceptors.add(DevConnect.dioInterceptor());
+
+// GetX GetConnect
+final connect = GetConnect();
+connect.httpClient.addRequestModifier(DevConnect.getConnectModifier());
+connect.httpClient.addResponseModifier(DevConnect.getConnectResponseModifier());
 ```
 
-### Logs - Auto-detected Libraries
+### Logs
 
-All these use `print()` internally, so Zone interception catches them:
-
-| Library | Tag in DevConnect |
-|---------|-------------------|
-| `print()` | `print` |
-| `debugPrint()` | `debugPrint` |
-| `logger` package | `logger` |
-| `talker` package | `talker` |
-| `logging` (dart:logging) | logger name |
-| `fimber` / `fimber_io` | tag name |
-| `simple_logger` | class name |
-
-Manual logging:
+Auto-captured via Zone: print, debugPrint, logger, talker, logging, fimber, simple_logger.
 
 ```dart
+// Manual
 DevConnect.log('User logged in');
 DevConnect.debug('Token refreshed', tag: 'Auth');
 DevConnect.warn('Rate limit approaching');
@@ -173,25 +121,26 @@ DevConnect.error('Payment failed', stackTrace: StackTrace.current.toString());
 // Tagged logger
 final logger = DevConnect.logger('AuthService');
 logger.info('Login success');
-logger.error('Token expired');
+
+// Loggy
+final printer = DevConnect.loggyPrinter();
 ```
 
-### State Management
+### State
 
 ```dart
 // Riverpod
 class DevConnectObserver extends ProviderObserver {
   @override
-  void didUpdateProvider(ProviderBase provider, Object? prev, Object? next, ProviderContainer container) {
+  void didUpdateProvider(ProviderBase p, Object? prev, Object? next, ProviderContainer c) {
     DevConnect.reportStateChange(
       stateManager: 'riverpod',
-      action: '${provider.name ?? provider.runtimeType} updated',
+      action: '${p.name ?? p.runtimeType} updated',
       previousState: {'value': prev.toString()},
       nextState: {'value': next.toString()},
     );
   }
 }
-
 ProviderScope(observers: [DevConnectObserver()], child: MyApp())
 ```
 
@@ -209,13 +158,19 @@ class DevConnectBlocObserver extends BlocObserver {
     );
   }
 }
-
 Bloc.observer = DevConnectBlocObserver();
+```
+
+```dart
+// Signals
+final observer = DevConnect.signalsObserver();
+observer.observe(mySignal, 'counterSignal');
 ```
 
 ### Storage
 
 ```dart
+// SharedPreferences
 final reporter = DevConnect.sharedPreferencesReporter();
 reporter.reportWrite('token', 'abc123');
 reporter.reportRead('token', 'abc123');
@@ -224,327 +179,406 @@ reporter.reportDelete('token');
 // Hive
 final hiveReporter = DevConnect.hiveReporter();
 hiveReporter.reportWrite('settings', {'darkMode': true});
+
+// flutter_secure_storage
+final secureReporter = DevConnect.secureStorageReporter();
+secureReporter.reportWrite('token', 'secret');
+secureReporter.reportRead('token', '***');
+
+// MMKV
+final mmkvReporter = DevConnect.mmkvReporter();
+mmkvReporter.reportWrite('key', 'value');
+mmkvReporter.reportRead('key', 'value');
+```
+
+### Database
+
+```dart
+// Drift
+final driftReporter = DevConnect.driftReporter();
+driftReporter.reportQuery('SELECT * FROM users', results);
+
+// Drift auto-intercept
+final executor = DevConnect.driftQueryExecutor(innerExecutor);
+
+// Isar
+final isarReporter = DevConnect.isarReporter();
+isarReporter.reportQuery('User', results);
+isarReporter.reportPut('User', {'name': 'John'});
+```
+
+### Benchmark
+
+```dart
+DevConnect.benchmarkStart('loadHome');
+await fetchUser();
+DevConnect.benchmarkStep('loadHome');
+await fetchPosts();
+DevConnect.benchmarkStop('loadHome');
+```
+
+### Custom Commands
+
+```dart
+DevConnect.registerCommand('clearCache', (args) {
+  return {'cleared': true};
+});
 ```
 
 ### Navigation
 
 ```dart
 MaterialApp(navigatorObservers: [DevConnect.navigationObserver()])
-
-// GoRouter
 GoRouter(observers: [DevConnect.navigationObserver()])
 ```
 
 ---
 
-## 3. React Native SDK
+## React Native SDK
 
 ### Install
 
 ```bash
-# From npm (after published)
 yarn add devconnect-react-native
-# or
-npm install devconnect-react-native
-```
-
-Or from GitHub:
-
-```bash
+# or from GitHub
 yarn add github:ridelinktechs/devconnect#main
 ```
 
-### Quick Start
+### Init
 
 ```typescript
 import { DevConnect } from 'devconnect-react-native';
 
-// In App.tsx or index.js - before anything else
-DevConnect.init({ appName: 'MyApp' });
+await DevConnect.init({ appName: 'MyApp' });
+// Auto-captures: fetch, XHR, console.log/warn/error
 ```
 
-Done. This single call auto-captures:
-- ALL `console.log/debug/info/warn/error/trace` calls
-- ALL `fetch()` requests
-- ALL `XMLHttpRequest` requests
-- Filters out RN system logs
-
-### Network - Auto-captured HTTP Libraries
-
-| Library | Auto? |
-|---------|-------|
-| `fetch()` | Auto |
-| `XMLHttpRequest` | Auto |
-| `axios` | Auto (uses XHR/fetch) |
-| `got` / `ky` / `superagent` | Auto (uses fetch) |
-| `apisauce` | Auto (wraps axios) |
-| `@tanstack/react-query` | Auto (uses fetch/axios) |
-| `Apollo GraphQL` / `urql` | Auto (uses fetch) |
-| Firebase REST | Auto |
-| OAuth2 token requests | Auto |
-
-Optional axios-specific interceptor (adds Firebase/OAuth2 tagging):
+### Config
 
 ```typescript
-import axios from 'axios';
-import { setupAxiosInterceptor } from 'devconnect-react-native';
-
-setupAxiosInterceptor(axios);
-```
-
-### Logs - All Logging Libraries
-
-`console.*` is auto-patched on init. For third-party libraries:
-
-```typescript
-// react-native-logs
-import { logger, consoleTransport } from 'react-native-logs';
-import { devConnectTransport } from 'devconnect-react-native';
-
-const log = logger.createLogger({
-  transport: [consoleTransport, devConnectTransport],
+await DevConnect.init({
+  appName: 'MyApp',
+  appVersion: '1.0.0',
+  host: undefined,            // undefined = auto-detect, '192.168.1.100' = manual
+  port: 9090,                 // default: 9090
+  enabled: __DEV__,           // false in production
+  autoInterceptFetch: true,
+  autoInterceptXHR: true,
+  autoInterceptConsole: true,
 });
 ```
 
+### Network
+
+Auto-captured: fetch, XHR, axios, got, ky, superagent, apisauce, Apollo, urql, TanStack Query, SWR, RTK Query, ofetch, wretch, redaxios, Firebase, OAuth2.
+
 ```typescript
+// Axios (optional, for extra tagging)
+import { setupAxiosInterceptor } from 'devconnect-react-native';
+setupAxiosInterceptor(axios);
+```
+
+### Logs
+
+Auto-captured: console.log, console.debug, console.info, console.warn, console.error, console.trace. Also auto-captures: consola, debug, tslog, signale (they use console internally).
+
+```typescript
+// Manual
+DevConnect.log('User logged in');
+DevConnect.debug('Debug info', 'Auth');
+DevConnect.warn('Warning');
+DevConnect.error('Error', 'Tag', stackTrace);
+
+// react-native-logs
+import { devConnectTransport } from 'devconnect-react-native';
+const log = logger.createLogger({ transport: [consoleTransport, devConnectTransport] });
+
 // loglevel
-import log from 'loglevel';
 import { patchLoglevel } from 'devconnect-react-native';
 patchLoglevel(log);
-```
 
-```typescript
 // pino
-import pino from 'pino';
 import { pinoDevConnectTransport } from 'devconnect-react-native';
 const logger = pino({}, pinoDevConnectTransport());
-```
 
-```typescript
 // winston
-import winston from 'winston';
 import { winstonDevConnectTransport } from 'devconnect-react-native';
-const logger = winston.createLogger({ transports: [winstonDevConnectTransport] });
-```
 
-```typescript
 // bunyan
-import bunyan from 'bunyan';
 import { bunyanDevConnectStream } from 'devconnect-react-native';
-const logger = bunyan.createLogger({ name: 'myapp', streams: [{ stream: bunyanDevConnectStream() }] });
-```
 
-```typescript
-// ANY custom logger
+// Any custom logger
 import { wrapLogger } from 'devconnect-react-native';
 const wrapped = wrapLogger(myLogger, 'myLoggerName');
 ```
 
-| Library | Integration | Tag |
-|---------|------------|-----|
-| `console.log/warn/error` | Auto | `console.log`, `console.warn`... |
-| `react-native-logs` | `devConnectTransport` | `rn-logs` |
-| `loglevel` | `patchLoglevel(log)` | `loglevel` |
-| `pino` | `pinoDevConnectTransport()` | `pino` |
-| `winston` | `winstonDevConnectTransport` | `winston` |
-| `bunyan` | `bunyanDevConnectStream()` | `bunyan` |
-| Any custom | `wrapLogger(logger, name)` | custom |
-
-### State Management
+### State
 
 ```typescript
 // Redux / Redux Toolkit
 import { devConnectReduxMiddleware } from 'devconnect-react-native';
-
-// Classic Redux
-const store = createStore(rootReducer, applyMiddleware(devConnectReduxMiddleware));
-
-// Redux Toolkit
 const store = configureStore({
   reducer: rootReducer,
   middleware: (getDefault) => getDefault().concat(devConnectReduxMiddleware),
 });
-```
 
-```typescript
+// Dispatch from desktop
+DevConnect.connectReduxStore(store);
+
 // MobX
-import { spy } from 'mobx';
 import { setupMobxSpy } from 'devconnect-react-native';
 setupMobxSpy(spy);
+
+// Zustand
+import { devConnectMiddleware } from 'devconnect-react-native';
+const useStore = create(devConnectMiddleware((set) => ({
+  count: 0,
+  increment: () => set((s) => ({ count: s.count + 1 })),
+}), 'MyStore'));
+
+// Jotai
+import { devConnectAtomEffect } from 'devconnect-react-native';
+
+// Valtio
+import { watchValtio } from 'devconnect-react-native';
+const state = proxy({ count: 0 });
+watchValtio(state, 'MyState');
+
+// XState
+import { devConnectXStateInspector } from 'devconnect-react-native';
+const service = interpret(machine).onTransition(devConnectXStateInspector('MyMachine'));
 ```
 
-### AsyncStorage
+### Storage
 
 ```typescript
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// AsyncStorage
 import { DevConnectAsyncStorage } from 'devconnect-react-native';
-
-// Patch in-place (recommended)
 DevConnectAsyncStorage.patchInPlace(AsyncStorage);
 
-// Or wrap
-const Storage = DevConnectAsyncStorage.wrap(AsyncStorage);
+// MMKV
+import { DevConnectMMKV } from 'devconnect-react-native';
+DevConnectMMKV.wrap(storage);
+```
+
+### Benchmark
+
+```typescript
+DevConnect.benchmark('loadUserData');
+await fetchUser();
+DevConnect.benchmarkStep('loadUserData', 'fetched user');
+await fetchPosts();
+DevConnect.benchmarkStop('loadUserData');
+```
+
+### Custom Commands
+
+```typescript
+DevConnect.registerCommand('clearCache', () => {
+  AsyncStorage.clear();
+  return { success: true };
+});
+```
+
+### State Snapshot + Restore
+
+```typescript
+DevConnect.sendStateSnapshot('redux', store.getState());
+DevConnect.onStateRestore((state) => {
+  store.dispatch({ type: 'RESTORE_STATE', payload: state });
+});
 ```
 
 ---
 
-## 4. Android Native SDK
+## Android Native SDK
 
 ### Install
 
 ```gradle
-// app/build.gradle.kts
+// JitPack
 dependencies {
-    // From Maven Central (after published)
-    implementation("com.ridelink:devconnect-android:1.0.0")
+    implementation("com.github.ridelinktechs.devconnect:devconnect-android:v1.0.0")
 }
-```
 
-Or from JitPack (GitHub):
-
-```gradle
 // settings.gradle.kts
 dependencyResolutionManagement {
     repositories {
         maven { url = uri("https://jitpack.io") }
     }
 }
-
-// app/build.gradle.kts
-dependencies {
-    implementation("com.github.ridelinktechs.devconnect:devconnect-android:v1.0.0")
-}
 ```
 
-Or AAR file: download from [Releases](https://github.com/ridelinktechs/devconnect/releases):
-
-```gradle
-dependencies {
-    implementation(files("libs/devconnect-android-1.0.0.aar"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-}
-```
-
-### Quick Start
+### Init
 
 ```kotlin
-// Application.kt
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         DevConnect.init(
             context = this,
             appName = "MyApp",
-            host = "10.0.2.2", // emulator -> host (use your PC IP for real device)
         )
     }
 }
 ```
 
-### Network - All HTTP Libraries
+### Config
 
 ```kotlin
-// OkHttp (also captures Retrofit, Firebase, OAuth2, Glide, Coil)
+DevConnect.init(
+    context = this,
+    appName = "MyApp",
+    appVersion = "1.0.0",
+    host = null,                 // null = auto-detect, "192.168.1.100" = manual
+    port = 9090,                 // default: 9090
+    enabled = BuildConfig.DEBUG, // false in release
+)
+```
+
+### Network
+
+```kotlin
+// OkHttp (captures Retrofit, Firebase, OAuth2, Glide, Coil)
 val client = OkHttpClient.Builder()
     .addInterceptor(DevConnect.okHttpInterceptor())
     .build()
 
-// Retrofit uses the same OkHttp client
-val retrofit = Retrofit.Builder()
-    .client(client)
-    .baseUrl("https://api.example.com/")
-    .build()
-```
+// Ktor
+val client = HttpClient {
+    install(DevConnect.ktorPlugin())
+}
 
-| Library | How |
-|---------|-----|
-| OkHttp | `DevConnect.okHttpInterceptor()` |
-| Retrofit | Via OkHttp client |
-| Ktor (OkHttp engine) | Via OkHttp client |
-| Fuel | Via OkHttp client |
-| Firebase | Via OkHttp client |
-| OAuth2 | Via OkHttp client |
-| Glide / Coil | Via OkHttp client |
-| Volley | `DevConnectHttpURLConnection` wrapper |
-| `HttpURLConnection` | `DevConnectHttpURLConnection.open(url)` |
-
-For Volley:
-
-```kotlin
+// Volley
 val stack = object : HurlStack() {
     override fun createConnection(url: URL): HttpURLConnection {
         return DevConnectHttpURLConnection.wrap(super.createConnection(url))
     }
 }
-val queue = Volley.newRequestQueue(context, stack)
 ```
 
-### Logs - All Logging Methods
+### Logs
 
 ```kotlin
-// Option 1: Drop-in replacement for android.util.Log
+// Drop-in replacement for android.util.Log
 import com.devconnect.interceptors.DCLog as Log
-
-Log.d("MyTag", "Hello")       // -> DevConnect + logcat
+Log.d("MyTag", "Hello")
 Log.e("MyTag", "Error", exception)
-```
 
-```kotlin
-// Option 2: Timber
-class DevConnectTree : Timber.Tree() {
-    override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
-        DevConnectTimberHelper.log(priority, tag, message, t)
-    }
-}
-
-// In Application.onCreate()
-Timber.plant(Timber.DebugTree())
+// Timber
 Timber.plant(DevConnectTree())
-```
 
-```kotlin
-// Option 3: Intercept println()
+// Intercept println()
 DevConnectLogInterceptor.interceptSystemOut()
+
+// Kermit (KMP)
+Logger.addLogWriter(DevConnect.kermitWriter())
+
+// Napier (KMP)
+Napier.base(DevConnect.napierAntilog())
+
+// Manual
+DevConnect.sendLog("info", "User logged in", tag = "Auth")
 ```
 
-| Method | How | Tag |
-|--------|-----|-----|
-| `Log.d/i/w/e()` | `import DCLog as Log` | Your tag |
-| `Timber.d/e()` | `DevConnectTree` | Timber tag |
-| `println()` | `interceptSystemOut()` | `println` |
-
-### State Management
+### State
 
 ```kotlin
-// ViewModel
-fun updateName(name: String) {
-    val prev = _state.value
-    _state.value = prev.copy(name = name)
-    DevConnectViewModelObserver.reportStateUpdate(
-        viewModelName = "MyViewModel",
-        action = "updateName",
-        previousState = mapOf("name" to prev.name),
-        nextState = mapOf("name" to name),
-    )
-}
+// ViewModel (manual)
+DevConnectViewModelObserver.reportStateUpdate(
+    viewModelName = "MyViewModel",
+    action = "updateName",
+    previousState = mapOf("name" to prev),
+    nextState = mapOf("name" to next),
+)
+
+// StateFlow (auto-observe)
+DevConnect.stateObserver().observe(scope, stateFlow, "UserState")
+
+// LiveData (auto-observe)
+DevConnect.stateObserver().observe(lifecycleOwner, liveData, "UserState")
 ```
 
-### SharedPreferences
+### Storage
 
 ```kotlin
+// SharedPreferences
 val reporter = DevConnect.sharedPrefsReporter()
 reporter.reportWrite("token", "abc123")
 reporter.reportRead("token", "abc123")
 reporter.reportDelete("token")
+
+// DataStore
+val dsReporter = DevConnect.dataStoreReporter()
+dsReporter.reportWrite("darkMode", true)
+dsReporter.reportRead("darkMode", true)
+
+// MMKV
+val mmkvReporter = DevConnect.mmkvReporter()
+mmkvReporter.reportWrite("key", "value")
+mmkvReporter.reportRead("key", "value")
 ```
+
+### Database
+
+```kotlin
+// Room
+val roomReporter = DevConnect.roomReporter()
+roomReporter.reportQuery("SELECT * FROM users", results)
+roomReporter.reportInsert("users", rowId)
+```
+
+### Benchmark
+
+```kotlin
+DevConnect.benchmarkStart("loadHome")
+fetchUser()
+DevConnect.benchmarkStep("loadHome")
+fetchPosts()
+DevConnect.benchmarkStop("loadHome")
+```
+
+### Custom Commands
+
+```kotlin
+DevConnect.registerCommand("clearCache") { args ->
+    mapOf("cleared" to true)
+}
+```
+
+---
+
+## Real Device Connection
+
+### Auto-detect (default)
+
+SDK tries these addresses in order:
+1. `localhost` (iOS simulator, macOS)
+2. `10.0.2.2` (Android emulator)
+3. `10.0.3.2` (Genymotion)
+4. Scan local network subnet
+
+### Manual IP
+
+Check your desktop IP in **Settings** page (click to copy), then:
+
+```dart
+await DevConnect.init(appName: 'MyApp', host: '192.168.1.5');
+```
+
+### Android USB
+
+In desktop **Settings > Android Device (USB)**, click **"Run ADB Reverse"**.
+
+Or manually: `adb reverse tcp:9090 tcp:9090`
 
 ---
 
 ## Architecture
 
 - **Desktop**: Flutter Desktop (macOS/Windows) + Riverpod + go_router + Freezed
-- **Protocol**: JSON over WebSocket (port 9090)
-- **Client SDKs**: Flutter (pub.dev / git), React Native (npm / git), Android (Maven / JitPack / AAR)
+- **Protocol**: JSON over WebSocket (default port 9090)
+- **SDKs**: Flutter (pub.dev / git), React Native (npm / git), Android (Maven / JitPack / AAR)
 
 ## License
 

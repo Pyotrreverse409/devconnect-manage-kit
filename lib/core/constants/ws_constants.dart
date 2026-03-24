@@ -9,6 +9,9 @@ class WsMessageTypes {
   static const String serverDatabaseQuery = 'server:database:query';
   static const String serverDatabaseRequestSchema =
       'server:database:request_schema';
+  static const String serverReduxDispatch = 'server:redux:dispatch';
+  static const String serverStateRestore = 'server:state:restore';
+  static const String serverCustomCommand = 'server:custom:command';
 
   // Client -> Server
   static const String clientHandshake = 'client:handshake';
@@ -18,6 +21,7 @@ class WsMessageTypes {
   static const String clientNetworkRequestComplete =
       'client:network:request_complete';
   static const String clientStateChange = 'client:state:change';
+  static const String clientStateSnapshot = 'client:state:snapshot';
   static const String clientLog = 'client:log';
   static const String clientStorageOperation = 'client:storage:operation';
   static const String clientStorageAllData = 'client:storage:all_data';
@@ -26,4 +30,6 @@ class WsMessageTypes {
   static const String clientDatabaseSchema = 'client:database:schema';
   static const String clientBenchmark = 'client:benchmark';
   static const String clientCustom = 'client:custom';
+  static const String clientCustomCommandResult =
+      'client:custom:command_result';
 }
