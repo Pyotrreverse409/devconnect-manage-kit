@@ -15,7 +15,7 @@ class DevConnectStorage {
   const DevConnectStorage({this.storageType = 'shared_preferences'});
 
   void reportRead(String key, dynamic value) {
-    DevConnectClient.instance.reportStorageOperation(
+    DevConnectClient.safeReportStorageOperation(
       storageType: storageType,
       key: key,
       value: value,
@@ -24,7 +24,7 @@ class DevConnectStorage {
   }
 
   void reportWrite(String key, dynamic value) {
-    DevConnectClient.instance.reportStorageOperation(
+    DevConnectClient.safeReportStorageOperation(
       storageType: storageType,
       key: key,
       value: value,
@@ -33,7 +33,7 @@ class DevConnectStorage {
   }
 
   void reportDelete(String key) {
-    DevConnectClient.instance.reportStorageOperation(
+    DevConnectClient.safeReportStorageOperation(
       storageType: storageType,
       key: key,
       operation: 'delete',
@@ -41,7 +41,7 @@ class DevConnectStorage {
   }
 
   void reportClear() {
-    DevConnectClient.instance.reportStorageOperation(
+    DevConnectClient.safeReportStorageOperation(
       storageType: storageType,
       key: '*',
       operation: 'clear',

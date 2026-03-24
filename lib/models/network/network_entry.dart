@@ -20,6 +20,7 @@ abstract class NetworkEntry with _$NetworkEntry {
     int? duration,
     String? error,
     @Default(false) bool isComplete,
+    @Default('app') String source, // 'app', 'library', 'system'
   }) = _NetworkEntry;
 
   factory NetworkEntry.fromJson(Map<String, dynamic> json) =>

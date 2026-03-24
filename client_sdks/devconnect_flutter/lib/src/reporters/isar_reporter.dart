@@ -30,7 +30,7 @@ class DevConnectIsarReporter {
   /// [data] - The serialized object data (optional).
   void reportPut(String collection, dynamic id, {Map<String, dynamic>? data}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'isar',
         key: collection,
         value: {
@@ -50,7 +50,7 @@ class DevConnectIsarReporter {
   /// [count] - Number of objects put.
   void reportPutAll(String collection, {List<dynamic>? ids, int? count}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'isar',
         key: collection,
         value: {
@@ -69,7 +69,7 @@ class DevConnectIsarReporter {
   /// [id] - The ID of the deleted object.
   void reportDelete(String collection, dynamic id) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'isar',
         key: collection,
         value: {
@@ -87,7 +87,7 @@ class DevConnectIsarReporter {
   /// [count] - Number of objects deleted.
   void reportDeleteAll(String collection, {int? count}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'isar',
         key: collection,
         value: {
@@ -112,7 +112,7 @@ class DevConnectIsarReporter {
     Duration? duration,
   }) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'isar',
         key: collection,
         value: {
@@ -131,7 +131,7 @@ class DevConnectIsarReporter {
   /// [collection] - The Isar collection name.
   void reportClear(String collection) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'isar',
         key: collection,
         value: {
@@ -148,7 +148,7 @@ class DevConnectIsarReporter {
   /// [filter] - Description of what is being watched.
   void reportWatch(String collection, {String? filter}) {
     try {
-      DevConnectClient.instance.log(
+      DevConnectClient.safeLog(
         'Isar watch registered on $collection${filter != null ? ' ($filter)' : ''}',
         tag: 'Isar',
         metadata: {

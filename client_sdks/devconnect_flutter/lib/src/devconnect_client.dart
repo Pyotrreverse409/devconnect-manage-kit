@@ -11,6 +11,24 @@ class DevConnectClient {
   static DevConnectClient? _instance;
   static DevConnectClient get instance => _instance!;
 
+  /// Returns instance or null if not yet initialized.
+  /// Use this in interceptors/reporters that may run before init().
+  static DevConnectClient? get instanceSafe => _instance;
+
+  /// Pre-init message queue: messages sent before init() completes.
+  static final List<Map<String, dynamic>> _preInitQueue = [];
+
+  /// Send a message safely - queues if init() hasn't completed yet.
+  /// Use this instead of instance.xxx() in interceptors/reporters.
+  static void safeSend(String type, Map<String, dynamic> payload) {
+    final inst = _instance;
+    if (inst != null) {
+      inst._send(type, payload);
+    } else if (_preInitQueue.length < 500) {
+      _preInitQueue.add({'type': type, 'payload': payload});
+    }
+  }
+
   WebSocket? _socket;
   String _host;
   final int _port;
@@ -23,6 +41,7 @@ class DevConnectClient {
   late final String _deviceId;
   bool _connected = false;
   Timer? _reconnectTimer;
+  final List<String> _messageQueue = [];
 
   OnConnected? onConnected;
   OnDisconnected? onDisconnected;
@@ -86,7 +105,7 @@ class DevConnectClient {
       port: port,
       appName: appName,
       appVersion: appVersion,
-      deviceName: deviceName ?? Platform.localHostname,
+      deviceName: deviceName ?? _defaultDeviceName(),
       platform: platform,
       auto_: auto_,
     );
@@ -94,71 +113,236 @@ class DevConnectClient {
     return _instance!;
   }
 
-  /// Auto-detect the DevConnect desktop host IP.
-  ///
-  /// Tries multiple addresses in order and connects to the first one that responds.
-  static Future<String> _autoDetectHost(int port) async {
-    // Candidate hosts to try
-    final candidates = <String>[
-      'localhost',       // iOS simulator, macOS, same machine
-      '10.0.2.2',       // Android emulator (standard AVD)
-      '10.0.3.2',       // Genymotion emulator
-      '127.0.0.1',      // Loopback
-    ];
-
-    // On Android, try emulator address first
-    if (Platform.isAndroid) {
-      candidates.insert(0, '10.0.2.2');
-    }
-
-    // Try each candidate with a short timeout
-    for (final host in candidates) {
-      try {
-        final socket = await WebSocket.connect(
-          'ws://$host:$port',
-        ).timeout(const Duration(milliseconds: 800));
-        await socket.close();
-        return host;
-      } catch (_) {
-        continue;
-      }
-    }
-
-    // If nothing found, try to discover via network interfaces
-    final gatewayHost = await _tryGatewayHost(port);
-    if (gatewayHost != null) return gatewayHost;
-
-    // Fallback
-    return Platform.isAndroid ? '10.0.2.2' : 'localhost';
+  static String _defaultDeviceName() {
+    if (Platform.isAndroid) return 'Android Device';
+    if (Platform.isIOS) return 'iOS Device';
+    if (Platform.isMacOS) return 'macOS';
+    if (Platform.isWindows) return 'Windows';
+    if (Platform.isLinux) return 'Linux';
+    return Platform.localHostname;
   }
 
-  /// Try to find desktop app on the local network gateway IP.
-  static Future<String?> _tryGatewayHost(int port) async {
+  /// UDP discovery port — server broadcasts beacons here.
+  static const int _discoveryPort = 41234;
+
+  /// XOR key for obfuscating cached data.
+  static const String _cacheKey = 'DcN3t\$ecR7!';
+
+  /// Cache file for last known server host.
+  static File get _cacheFile =>
+      File('${Directory.systemTemp.path}/.dc_session');
+
+  /// XOR encrypt/decrypt with key.
+  static String _xorCipher(String input, String key) {
+    final output = StringBuffer();
+    for (int i = 0; i < input.length; i++) {
+      output.writeCharCode(
+          input.codeUnitAt(i) ^ key.codeUnitAt(i % key.length));
+    }
+    return output.toString();
+  }
+
+  /// Save discovered server host to cache file (encrypted).
+  static Future<void> _saveHostCache(String host, int port) async {
+    try {
+      final plain = jsonEncode({
+        'h': host,
+        'p': port,
+        't': DateTime.now().millisecondsSinceEpoch,
+      });
+      final encrypted = base64Encode(utf8.encode(_xorCipher(plain, _cacheKey)));
+      await _cacheFile.writeAsString(encrypted);
+    } catch (_) {}
+  }
+
+  /// Read cached server host (decrypted). Returns null if expired or missing.
+  static Future<String?> _readHostCache(int port) async {
+    try {
+      if (!await _cacheFile.exists()) return null;
+      final encrypted = await _cacheFile.readAsString();
+      final decrypted =
+          _xorCipher(utf8.decode(base64Decode(encrypted)), _cacheKey);
+      final data = jsonDecode(decrypted) as Map<String, dynamic>;
+      // Expire after 24 hours
+      final cachedTime = data['t'] as int? ?? 0;
+      if (DateTime.now().millisecondsSinceEpoch - cachedTime > 24 * 3600000) {
+        return null;
+      }
+      if (data['p'] != port) return null;
+      return data['h'] as String?;
+    } catch (_) {}
+    return null;
+  }
+
+  /// Auto-detect the DevConnect desktop host IP.
+  ///
+  /// 0. Try cached host from last session (instant)
+  /// 1. Race: UDP beacon vs known emulator/USB addresses (parallel)
+  /// 2. Scan local subnet (real device WiFi)
+  /// 3. Scan common subnets as fallback
+  static Future<String> _autoDetectHost(int port) async {
+    // 0. Try cached host from previous session (instant reconnect)
+    final cached = await _readHostCache(port);
+    if (cached != null && await _tryHost(cached, port, 500)) {
+      return cached;
+    }
+
+    // 1. Race: UDP beacon + known hosts in parallel
+    //    USB (adb reverse) → localhost/10.0.2.2 responds fast
+    //    WiFi → UDP beacon responds fast
+    //    Whoever wins first, we use it.
+    final knownHosts = Platform.isAndroid
+        ? ['10.0.2.2', '10.0.3.2', 'localhost', '127.0.0.1']
+        : ['localhost', '127.0.0.1'];
+
+    final raceFutures = <Future<String?>>[];
+
+    // UDP beacon listener
+    raceFutures.add(_listenForBeacon(port));
+
+    // Known hosts (try all in parallel)
+    for (final host in knownHosts) {
+      raceFutures.add(
+        _tryHost(host, port, 800).then((ok) => ok ? host : null),
+      );
+    }
+
+    // Wait for first non-null result, or all to complete
+    final raceResult = await _firstNonNull(raceFutures);
+    if (raceResult != null) {
+      await _saveHostCache(raceResult, port);
+      return raceResult;
+    }
+
+    // 2. Scan device's own subnet (real device on same WiFi)
     try {
       final interfaces = await NetworkInterface.list();
-      for (final interface_ in interfaces) {
-        for (final addr in interface_.addresses) {
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-            // Try the gateway (x.x.x.1) - common router/host pattern
             final parts = addr.address.split('.');
             if (parts.length == 4) {
-              final gatewayIp = '${parts[0]}.${parts[1]}.${parts[2]}.1';
-              try {
-                final socket = await WebSocket.connect(
-                  'ws://$gatewayIp:$port',
-                ).timeout(const Duration(milliseconds: 500));
-                await socket.close();
-                return gatewayIp;
-              } catch (_) {}
-
-              // Also try the host IP (for real device on same network)
-              // Common pattern: device is x.x.x.Y, desktop is x.x.x.Z
-              // We can't know Z, but gateway is a good guess
+              final subnet = '${parts[0]}.${parts[1]}.${parts[2]}';
+              final found = await _scanSubnet(subnet, port);
+              if (found != null) {
+                await _saveHostCache(found, port);
+                return found;
+              }
             }
           }
         }
       }
     } catch (_) {}
+
+    // 3. Scan common subnets as fallback
+    for (final subnet in ['192.168.1', '192.168.0', '192.168.2', '10.0.0', '10.0.1', '172.16.0']) {
+      final found = await _scanSubnet(subnet, port);
+      if (found != null) {
+        await _saveHostCache(found, port);
+        return found;
+      }
+    }
+
+    // Fallback
+    return Platform.isAndroid ? '10.0.2.2' : 'localhost';
+  }
+
+  /// Returns the first non-null result from a list of futures.
+  /// Waits for all to complete; returns first non-null in order.
+  static Future<String?> _firstNonNull(List<Future<String?>> futures) async {
+    final completer = Completer<String?>();
+    int remaining = futures.length;
+
+    for (final future in futures) {
+      future.then((value) {
+        if (value != null && !completer.isCompleted) {
+          completer.complete(value);
+        } else {
+          remaining--;
+          if (remaining == 0 && !completer.isCompleted) {
+            completer.complete(null);
+          }
+        }
+      }).catchError((_) {
+        remaining--;
+        if (remaining == 0 && !completer.isCompleted) {
+          completer.complete(null);
+        }
+      });
+    }
+
+    return completer.future;
+  }
+
+  /// Listen for a UDP beacon from the DevConnect server.
+  /// Server broadcasts {"type":"devconnect_beacon","port":9090,...}
+  /// every 2 seconds. We listen for up to 3 seconds.
+  static Future<String?> _listenForBeacon(int expectedPort) async {
+    RawDatagramSocket? udp;
+    try {
+      udp = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        _discoveryPort,
+        reuseAddress: true,
+      );
+
+      final completer = Completer<String?>();
+      final timer = Timer(const Duration(seconds: 3), () {
+        if (!completer.isCompleted) completer.complete(null);
+      });
+
+      udp.listen((event) {
+        if (event == RawSocketEvent.read) {
+          final datagram = udp!.receive();
+          if (datagram != null && !completer.isCompleted) {
+            try {
+              final data = jsonDecode(utf8.decode(datagram.data));
+              if (data['type'] == 'devconnect_beacon') {
+                final serverPort = data['port'] as int?;
+                if (serverPort == expectedPort) {
+                  timer.cancel();
+                  completer.complete(datagram.address.address);
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      });
+
+      return await completer.future;
+    } catch (_) {
+      return null;
+    } finally {
+      udp?.close();
+    }
+  }
+
+  /// Try connecting to a single host with timeout.
+  static Future<bool> _tryHost(String host, int port, int timeoutMs) async {
+    try {
+      final socket = await Socket.connect(host, port,
+          timeout: Duration(milliseconds: timeoutMs));
+      await socket.close();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Scan a subnet (x.x.x.1 through x.x.x.30) in parallel.
+  /// Returns first host that responds, or null.
+  static Future<String?> _scanSubnet(String subnet, int port) async {
+    final futures = <Future<String?>>[];
+    for (int i = 1; i <= 30; i++) {
+      final host = '$subnet.$i';
+      futures.add(
+        _tryHost(host, port, 400).then((ok) => ok ? host : null),
+      );
+    }
+    final results = await Future.wait(futures);
+    for (final result in results) {
+      if (result != null) return result;
+    }
     return null;
   }
 
@@ -166,6 +350,22 @@ class DevConnectClient {
     try {
       _socket = await WebSocket.connect('ws://$_host:$_port');
       _connected = true;
+
+      // Flush pre-init queue (messages from interceptors before init)
+      if (_preInitQueue.isNotEmpty) {
+        for (final msg in _preInitQueue) {
+          _send(msg['type'] as String, msg['payload'] as Map<String, dynamic>);
+        }
+        _preInitQueue.clear();
+      }
+
+      // Flush instance message queue (messages during connecting)
+      if (_messageQueue.isNotEmpty) {
+        for (final json in _messageQueue) {
+          _socket!.add(json);
+        }
+        _messageQueue.clear();
+      }
 
       _socket!.listen(
         (data) {
@@ -240,8 +440,6 @@ class DevConnectClient {
 
   void _send(String type, Map<String, dynamic> payload,
       {String? correlationId}) {
-    if (_socket == null || !_connected) return;
-
     final message = {
       'id': _uuid.v4(),
       'type': type,
@@ -251,7 +449,115 @@ class DevConnectClient {
       if (correlationId != null) 'correlationId': correlationId,
     };
 
-    _socket!.add(jsonEncode(message));
+    final json = jsonEncode(message);
+    if (_socket != null && _connected) {
+      _socket!.add(json);
+    } else if (_messageQueue.length < 1000) {
+      _messageQueue.add(json);
+    }
+  }
+
+  // --- Safe static API (for interceptors/reporters that may run before init) ---
+
+  static void safeLog(String message, {String? tag, Map<String, dynamic>? metadata}) {
+    safeSend('client:log', {
+      'level': 'info',
+      'message': message,
+      if (tag != null) 'tag': tag,
+      if (metadata != null) 'metadata': metadata,
+    });
+  }
+
+  static void safeSendLog({
+    required String level,
+    required String message,
+    String? tag,
+    String? stackTrace,
+    Map<String, dynamic>? metadata,
+  }) {
+    safeSend('client:log', {
+      'level': level,
+      'message': message,
+      if (tag != null) 'tag': tag,
+      if (stackTrace != null) 'stackTrace': stackTrace,
+      if (metadata != null) 'metadata': metadata,
+    });
+  }
+
+  static void safeReportNetworkStart({
+    required String requestId,
+    required String method,
+    required String url,
+    Map<String, String>? headers,
+    dynamic body,
+  }) {
+    safeSend('client:network:request_start', {
+      'requestId': requestId,
+      'method': method,
+      'url': url,
+      'startTime': DateTime.now().millisecondsSinceEpoch,
+      if (headers != null) 'requestHeaders': headers,
+      if (body != null) 'requestBody': body,
+    });
+  }
+
+  static void safeReportNetworkComplete({
+    required String requestId,
+    required String method,
+    required String url,
+    required int statusCode,
+    required int startTime,
+    Map<String, String>? requestHeaders,
+    Map<String, String>? responseHeaders,
+    dynamic requestBody,
+    dynamic responseBody,
+    String? error,
+  }) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    safeSend('client:network:request_complete', {
+      'requestId': requestId,
+      'method': method,
+      'url': url,
+      'statusCode': statusCode,
+      'startTime': startTime,
+      'endTime': now,
+      'duration': now - startTime,
+      if (requestHeaders != null) 'requestHeaders': requestHeaders,
+      if (responseHeaders != null) 'responseHeaders': responseHeaders,
+      if (requestBody != null) 'requestBody': requestBody,
+      if (responseBody != null) 'responseBody': responseBody,
+      if (error != null) 'error': error,
+    });
+  }
+
+  static void safeReportStateChange({
+    required String stateManager,
+    required String action,
+    Map<String, dynamic>? previousState,
+    Map<String, dynamic>? nextState,
+    List<Map<String, dynamic>>? diff,
+  }) {
+    safeSend('client:state:change', {
+      'stateManager': stateManager,
+      'action': action,
+      if (previousState != null) 'previousState': previousState,
+      if (nextState != null) 'nextState': nextState,
+      if (diff != null) 'diff': diff,
+    });
+  }
+
+  static void safeReportStorageOperation({
+    required String storageType,
+    required String key,
+    dynamic value,
+    required String operation,
+  }) {
+    safeSend('client:storage:operation', {
+      'storageType': storageType,
+      'key': key,
+      if (value != null) 'value': value,
+      'operation': operation,
+    });
   }
 
   // --- Public API ---

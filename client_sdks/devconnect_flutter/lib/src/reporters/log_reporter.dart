@@ -14,20 +14,19 @@ class DevConnectLogger {
   const DevConnectLogger({this.tag});
 
   void debug(String message, {Map<String, dynamic>? metadata}) {
-    DevConnectClient.instance.debug(message, tag: tag, metadata: metadata);
+    DevConnectClient.safeSendLog(level: 'debug', message: message, tag: tag, metadata: metadata);
   }
 
   void info(String message, {Map<String, dynamic>? metadata}) {
-    DevConnectClient.instance.log(message, tag: tag, metadata: metadata);
+    DevConnectClient.safeLog(message, tag: tag, metadata: metadata);
   }
 
   void warn(String message, {Map<String, dynamic>? metadata}) {
-    DevConnectClient.instance.warn(message, tag: tag, metadata: metadata);
+    DevConnectClient.safeSendLog(level: 'warn', message: message, tag: tag, metadata: metadata);
   }
 
   void error(String message,
       {String? stackTrace, Map<String, dynamic>? metadata}) {
-    DevConnectClient.instance
-        .error(message, tag: tag, stackTrace: stackTrace, metadata: metadata);
+    DevConnectClient.safeSendLog(level: 'error', message: message, tag: tag, stackTrace: stackTrace, metadata: metadata);
   }
 }

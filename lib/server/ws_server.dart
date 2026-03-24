@@ -12,6 +12,9 @@ import 'ws_connection.dart';
 
 typedef MessageCallback = void Function(DCMessage message);
 
+/// UDP discovery port — clients listen here for server beacons.
+const int discoveryPort = 41234;
+
 class WsServer {
   HttpServer? _server;
   final Map<String, WsConnection> _connections = {};
@@ -29,20 +32,93 @@ class WsServer {
   bool get isRunning => _server != null;
   int get port => _server?.port ?? 0;
 
+  // UDP broadcast beacon
+  RawDatagramSocket? _udpSocket;
+  Timer? _beaconTimer;
+
   Future<void> start({int port = AppConstants.defaultPort}) async {
     if (_server != null) return;
 
     _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _server!.listen(_handleRequest);
+
+    // Start UDP broadcast beacon so clients can auto-discover us
+    _startBeacon(port);
   }
 
   Future<void> stop() async {
+    _stopBeacon();
     for (final conn in _connections.values) {
       await conn.close();
     }
     _connections.clear();
     await _server?.close(force: true);
     _server = null;
+  }
+
+  /// Broadcast a UDP beacon every 2 seconds on all network interfaces.
+  /// Clients listen on [discoveryPort] and extract server IP from datagram source.
+  void _startBeacon(int wsPort) async {
+    try {
+      _udpSocket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        0, // OS picks an ephemeral port for sending
+      );
+      _udpSocket!.broadcastEnabled = true;
+
+      final beacon = utf8.encode(jsonEncode({
+        'type': 'devconnect_beacon',
+        'port': wsPort,
+        'app': AppConstants.appName,
+        'version': AppConstants.appVersion,
+      }));
+
+      _beaconTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+        try {
+          // Broadcast to 255.255.255.255 (limited broadcast)
+          _udpSocket?.send(
+            beacon,
+            InternetAddress('255.255.255.255'),
+            discoveryPort,
+          );
+
+          // Also send to each subnet broadcast (x.x.x.255) for networks
+          // that block limited broadcast
+          _sendSubnetBroadcasts(beacon);
+        } catch (_) {}
+      });
+    } catch (_) {
+      // UDP broadcast not available — clients fall back to subnet scanning
+    }
+  }
+
+  void _sendSubnetBroadcasts(List<int> beacon) async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            final parts = addr.address.split('.');
+            if (parts.length == 4) {
+              final subnetBroadcast =
+                  '${parts[0]}.${parts[1]}.${parts[2]}.255';
+              _udpSocket?.send(
+                beacon,
+                InternetAddress(subnetBroadcast),
+                discoveryPort,
+              );
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _stopBeacon() {
+    _beaconTimer?.cancel();
+    _beaconTimer = null;
+    _udpSocket?.close();
+    _udpSocket = null;
   }
 
   void sendToDevice(String deviceId, DCMessage message) {
@@ -60,8 +136,9 @@ class WsServer {
 
   void _handleRequest(HttpRequest request) async {
     if (WebSocketTransformer.isUpgradeRequest(request)) {
+      final remoteIp = request.connectionInfo?.remoteAddress.address;
       final socket = await WebSocketTransformer.upgrade(request);
-      _handleWebSocket(socket);
+      _handleWebSocket(socket, remoteIp);
     } else {
       request.response
         ..statusCode = HttpStatus.ok
@@ -75,7 +152,7 @@ class WsServer {
     }
   }
 
-  void _handleWebSocket(WebSocket socket) {
+  void _handleWebSocket(WebSocket socket, String? clientIp) {
     // Send hello
     final helloMsg = DCMessage(
       id: _uuid.v4(),
@@ -94,7 +171,7 @@ class WsServer {
           final message = DCMessage.fromJson(json);
 
           if (message.type == WsMessageTypes.clientHandshake) {
-            _handleHandshake(socket, message);
+            _handleHandshake(socket, message, clientIp);
           } else {
             _messageController.add(message);
           }
@@ -111,7 +188,7 @@ class WsServer {
     );
   }
 
-  void _handleHandshake(WebSocket socket, DCMessage message) {
+  void _handleHandshake(WebSocket socket, DCMessage message, String? clientIp) {
     final deviceInfo = DeviceInfo.fromJson(
       message.payload['deviceInfo'] as Map<String, dynamic>,
     );
@@ -119,7 +196,10 @@ class WsServer {
 
     final connection = WsConnection(
       socket: socket,
-      deviceInfo: deviceInfo.copyWith(connectedAt: DateTime.now()),
+      deviceInfo: deviceInfo.copyWith(
+        connectedAt: DateTime.now(),
+        clientIp: clientIp,
+      ),
     );
     _connections[deviceId] = connection;
 

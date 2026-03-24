@@ -178,7 +178,7 @@ class _DevConnectHttpClientRequest implements HttpClientRequest {
       headers[name] = values.join(', ');
     });
 
-    DevConnectClient.instance.reportNetworkStart(
+    DevConnectClient.safeReportNetworkStart(
       requestId: _requestId,
       method: _method,
       url: _url.toString(),
@@ -227,7 +227,7 @@ class _DevConnectHttpClientRequest implements HttpClientRequest {
         requestBody,
       );
     } catch (e) {
-      DevConnectClient.instance.reportNetworkComplete(
+      DevConnectClient.safeReportNetworkComplete(
         requestId: _requestId,
         method: _method,
         url: _url.toString(),
@@ -339,7 +339,7 @@ class _DevConnectHttpClientResponse extends Stream<List<int>>
     if (_reported) return;
     _reported = true;
 
-    DevConnectClient.instance.reportNetworkComplete(
+    DevConnectClient.safeReportNetworkComplete(
       requestId: _requestId,
       method: _method,
       url: _url,

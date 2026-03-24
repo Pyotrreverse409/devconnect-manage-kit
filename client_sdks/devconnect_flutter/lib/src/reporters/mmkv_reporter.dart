@@ -34,7 +34,7 @@ class DevConnectMmkvReporter {
   /// [valueType] - The type of value (e.g., 'string', 'int', 'bool', 'bytes').
   void reportRead(String key, {dynamic value, String? valueType}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: _storageType,
         key: key,
         value: valueType != null
@@ -52,7 +52,7 @@ class DevConnectMmkvReporter {
   /// [valueType] - The type of value (e.g., 'string', 'int', 'bool', 'bytes').
   void reportWrite(String key, {dynamic value, String? valueType}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: _storageType,
         key: key,
         value: valueType != null
@@ -68,7 +68,7 @@ class DevConnectMmkvReporter {
   /// [key] - The MMKV key that was deleted.
   void reportDelete(String key) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: _storageType,
         key: key,
         operation: 'delete',
@@ -79,7 +79,7 @@ class DevConnectMmkvReporter {
   /// Report clearing all values from this MMKV instance.
   void reportClear() {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: _storageType,
         key: '*',
         operation: 'clear',
@@ -93,7 +93,7 @@ class DevConnectMmkvReporter {
   /// [exists] - Whether the key exists.
   void reportContainsKey(String key, {required bool exists}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: _storageType,
         key: key,
         value: {'exists': exists},
@@ -105,7 +105,7 @@ class DevConnectMmkvReporter {
   /// Report the total count of keys in this MMKV instance.
   void reportCount(int count) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: _storageType,
         key: '*',
         value: {'count': count},

@@ -143,6 +143,7 @@ class WsMessageHandler {
       duration: p['duration'] as int?,
       error: p['error'] as String?,
       isComplete: message.type == WsMessageTypes.clientNetworkRequestComplete,
+      source: p['source'] as String? ?? 'app',
     );
     _networkController.add(entry);
   }

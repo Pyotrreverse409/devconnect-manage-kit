@@ -73,6 +73,9 @@ object DevConnect {
     private var enabled = true
     private var deviceId = UUID.randomUUID().toString()
 
+    /** Pre-init queue: messages sent before init() completes */
+    private val preInitQueue = mutableListOf<Pair<String, JSONObject>>()
+
     /**
      * Initialize DevConnect.
      *
@@ -86,6 +89,46 @@ object DevConnect {
      *
      * Auto-detection tries: 10.0.2.2 (emulator) -> 10.0.3.2 (Genymotion) -> localhost -> 127.0.0.1
      */
+    private var appContext: android.content.Context? = null
+    private const val CACHE_KEY = "DcN3t\$ecR7!"
+
+    private fun getPrefs(): android.content.SharedPreferences? {
+        return appContext?.getSharedPreferences("dc_session", android.content.Context.MODE_PRIVATE)
+    }
+
+    private fun xorCipher(input: String, key: String): String {
+        val sb = StringBuilder()
+        for (i in input.indices) {
+            sb.append((input[i].code xor key[i % key.length].code).toChar())
+        }
+        return sb.toString()
+    }
+
+    private fun saveHostCache(host: String, port: Int) {
+        try {
+            val plain = """{"h":"$host","p":$port,"t":${System.currentTimeMillis()}}"""
+            val encrypted = android.util.Base64.encodeToString(
+                xorCipher(plain, CACHE_KEY).toByteArray(Charsets.ISO_8859_1),
+                android.util.Base64.NO_WRAP
+            )
+            getPrefs()?.edit()?.putString("dc_s", encrypted)?.apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun readHostCache(port: Int): String? {
+        try {
+            val encrypted = getPrefs()?.getString("dc_s", null) ?: return null
+            val decoded = android.util.Base64.decode(encrypted, android.util.Base64.NO_WRAP)
+            val decrypted = xorCipher(String(decoded, Charsets.ISO_8859_1), CACHE_KEY)
+            val json = JSONObject(decrypted)
+            val cachedTime = json.optLong("t", 0)
+            if (System.currentTimeMillis() - cachedTime > 24 * 60 * 60 * 1000) return null
+            if (json.optInt("p") != port) return null
+            return json.optString("h", null)
+        } catch (_: Exception) {}
+        return null
+    }
+
     fun init(
         context: Any,
         appName: String,
@@ -97,6 +140,11 @@ object DevConnect {
     ) {
         this.enabled = enabled
         if (!enabled) return
+
+        // Save context for SharedPreferences
+        if (context is android.content.Context) {
+            appContext = context.applicationContext
+        }
 
         val resolvedHost = if (host == null || host == "auto") {
             if (auto) autoDetectHost(port) else "10.0.2.2"
@@ -112,19 +160,156 @@ object DevConnect {
             appVersion = appVersion
         )
         client?.connect()
+
+        // Flush pre-init queue (messages from interceptors before init)
+        if (preInitQueue.isNotEmpty()) {
+            for ((type, payload) in preInitQueue) {
+                send(type, payload)
+            }
+            preInitQueue.clear()
+        }
     }
 
+    /** UDP discovery port — server broadcasts beacons here */
+    private const val DISCOVERY_PORT = 41234
+
     private fun autoDetectHost(port: Int): String {
-        val candidates = listOf("10.0.2.2", "10.0.3.2", "localhost", "127.0.0.1")
-        for (candidate in candidates) {
-            try {
-                val socket = java.net.Socket()
-                socket.connect(java.net.InetSocketAddress(candidate, port), 500)
-                socket.close()
-                return candidate
-            } catch (_: Exception) {}
+        // 0. Try cached host from previous session (instant reconnect)
+        val cached = readHostCache(port)
+        if (cached != null && tryHost(cached, port, 500)) return cached
+
+        // 1. Race: UDP beacon + known hosts in parallel
+        //    USB (adb reverse) → localhost/10.0.2.2 responds fast
+        //    WiFi → UDP beacon responds fast
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(6)
+        try {
+            val futures = mutableListOf<java.util.concurrent.Future<String?>>()
+
+            // UDP beacon
+            futures.add(executor.submit(java.util.concurrent.Callable { listenForBeacon(port) }))
+
+            // Known emulator/USB hosts
+            for (candidate in listOf("10.0.2.2", "10.0.3.2", "localhost", "127.0.0.1")) {
+                futures.add(executor.submit(java.util.concurrent.Callable {
+                    if (tryHost(candidate, port, 800)) candidate else null
+                }))
+            }
+
+            // Wait up to 3.5s for first result
+            val deadline = System.currentTimeMillis() + 3500
+            for (future in futures) {
+                try {
+                    val remaining = deadline - System.currentTimeMillis()
+                    if (remaining <= 0) break
+                    val result = future.get(remaining, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    if (result != null) {
+                        saveHostCache(result, port)
+                        return result
+                    }
+                } catch (_: Exception) {}
+            }
+        } finally {
+            executor.shutdownNow()
         }
+
+        // 2. Get device's own subnet and scan it (real device on same WiFi)
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                val addrs = iface.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        val parts = addr.hostAddress?.split(".") ?: continue
+                        if (parts.size == 4) {
+                            val subnet = "${parts[0]}.${parts[1]}.${parts[2]}"
+                            val found = scanSubnet(subnet, port)
+                            if (found != null) { saveHostCache(found, port); return found }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 4. Scan common subnets as fallback
+        val commonSubnets = listOf("192.168.1", "192.168.0", "192.168.2", "10.0.0", "10.0.1", "172.16.0")
+        for (subnet in commonSubnets) {
+            val found = scanSubnet(subnet, port)
+            if (found != null) { saveHostCache(found, port); return found }
+        }
+
         return "10.0.2.2" // fallback for emulator
+    }
+
+    /**
+     * Listen for UDP beacon from DevConnect server.
+     * Server broadcasts {"type":"devconnect_beacon","port":9090,...}
+     * every 2 seconds. We listen for up to 3 seconds.
+     */
+    private fun listenForBeacon(expectedPort: Int): String? {
+        var socket: java.net.DatagramSocket? = null
+        try {
+            socket = java.net.DatagramSocket(null)
+            socket.reuseAddress = true
+            socket.bind(java.net.InetSocketAddress(DISCOVERY_PORT))
+            socket.soTimeout = 3000 // 3 second timeout
+
+            val buf = ByteArray(1024)
+            val packet = java.net.DatagramPacket(buf, buf.size)
+            socket.receive(packet)
+
+            val data = String(packet.data, 0, packet.length)
+            val json = org.json.JSONObject(data)
+            if (json.optString("type") == "devconnect_beacon" &&
+                json.optInt("port") == expectedPort) {
+                return packet.address.hostAddress
+            }
+        } catch (_: Exception) {
+            // Timeout or error — fall through to other methods
+        } finally {
+            socket?.close()
+        }
+        return null
+    }
+
+    private fun tryHost(host: String, port: Int, timeoutMs: Int): Boolean {
+        return try {
+            val socket = java.net.Socket()
+            socket.connect(java.net.InetSocketAddress(host, port), timeoutMs)
+            socket.close()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Scan a subnet (x.x.x.1 through x.x.x.30) in parallel.
+     * Returns first host that responds, or null.
+     */
+    private fun scanSubnet(subnet: String, port: Int): String? {
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(15)
+        val futures = (1..30).map { i ->
+            executor.submit(java.util.concurrent.Callable {
+                val host = "$subnet.$i"
+                if (tryHost(host, port, 400)) host else null
+            })
+        }
+        try {
+            for (future in futures) {
+                try {
+                    val result = future.get(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    if (result != null) {
+                        executor.shutdownNow()
+                        return result
+                    }
+                } catch (_: Exception) {}
+            }
+        } finally {
+            executor.shutdownNow()
+        }
+        return null
     }
 
     fun isConnected(): Boolean = client?.isConnected == true
@@ -430,6 +615,15 @@ object DevConnect {
     internal fun send(type: String, payload: JSONObject) {
         if (!enabled) return
 
+        val c = client
+        if (c == null) {
+            // Queue for later if init() hasn't been called yet
+            if (preInitQueue.size < 500) {
+                preInitQueue.add(Pair(type, payload))
+            }
+            return
+        }
+
         val message = JSONObject().apply {
             put("id", UUID.randomUUID().toString())
             put("type", type)
@@ -438,7 +632,7 @@ object DevConnect {
             put("payload", payload)
         }
 
-        client?.send(message.toString())
+        c.send(message.toString())
     }
 
     private fun buildPayload(block: JSONObject.() -> Unit): JSONObject {

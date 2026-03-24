@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -10,18 +11,118 @@ import '../../../../core/theme/color_tokens.dart';
 import '../../../../models/state/state_change.dart';
 import '../../provider/state_providers.dart';
 
-class StateInspectorPage extends ConsumerWidget {
+class StateInspectorPage extends ConsumerStatefulWidget {
   const StateInspectorPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StateInspectorPage> createState() =>
+      _StateInspectorPageState();
+}
+
+class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
+  static const _pageSize = 50;
+
+  final ScrollController _scrollController = ScrollController();
+  bool _autoScroll = true;
+  int _maxVisible = 50;
+  bool _loadingMore = false;
+  int _previousCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_autoScroll &&
+        !_loadingMore &&
+        _scrollController.position.pixels < 50) {
+      _loadMore();
+    }
+  }
+
+  void _loadMore() {
+    final entries = ref.read(filteredStateChangesProvider);
+    if (_maxVisible >= entries.length) return;
+
+    setState(() {
+      _loadingMore = true;
+    });
+
+    final oldMaxExtent = _scrollController.position.maxScrollExtent;
+
+    setState(() {
+      _maxVisible = (_maxVisible + _pageSize).clamp(0, entries.length);
+    });
+
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        final newMaxExtent = _scrollController.position.maxScrollExtent;
+        final delta = newMaxExtent - oldMaxExtent;
+        _scrollController.jumpTo(_scrollController.offset + delta);
+      }
+      setState(() {
+        _loadingMore = false;
+      });
+    });
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _toggleAutoScroll() {
+    setState(() {
+      _autoScroll = !_autoScroll;
+      if (_autoScroll) {
+        _maxVisible = _pageSize;
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          _scrollToBottom();
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final entries = ref.watch(filteredStateChangesProvider);
     final selected = ref.watch(selectedStateChangeProvider);
     final theme = Theme.of(context);
 
+    final startIndex = (entries.length - _maxVisible).clamp(0, entries.length);
+    final visibleEntries = entries.sublist(startIndex);
+    final hasMore = startIndex > 0;
+
+    // Auto-scroll when new items arrive and autoScroll is on
+    if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
+    }
+    _previousCount = entries.length;
+
     return Column(
       children: [
-        _Toolbar(count: entries.length),
+        _Toolbar(
+          totalCount: entries.length,
+          visibleCount: visibleEntries.length,
+          autoScroll: _autoScroll,
+          onToggleAutoScroll: _toggleAutoScroll,
+        ),
         const Divider(height: 1),
         Expanded(
           child: entries.isEmpty
@@ -36,21 +137,54 @@ class StateInspectorPage extends ConsumerWidget {
                     // Timeline
                     SizedBox(
                       width: selected != null ? 300 : 400,
-                      child: ListView.builder(
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) {
-                          final entry = entries[entries.length - 1 - index];
-                          final isSelected = selected?.id == entry.id;
-                          return _StateChangeTile(
-                            entry: entry,
-                            isSelected: isSelected,
-                            onTap: () {
-                              ref
-                                  .read(selectedStateChangeProvider.notifier)
-                                  .state = isSelected ? null : entry;
-                            },
-                          );
-                        },
+                      child: Column(
+                        children: [
+                          if (hasMore && !_autoScroll)
+                            GestureDetector(
+                              onTap: _loadMore,
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 6),
+                                  color: ColorTokens.primary
+                                      .withValues(alpha: 0.05),
+                                  child: Center(
+                                    child: Text(
+                                      '${entries.length - visibleEntries.length} older changes — tap to load more',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: ColorTokens.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Expanded(
+                            child: ListView.builder(
+                              controller: _scrollController,
+                              itemCount: visibleEntries.length,
+                              itemBuilder: (context, index) {
+                                final entry = visibleEntries[
+                                    visibleEntries.length - 1 - index];
+                                final isSelected = selected?.id == entry.id;
+                                return _StateChangeTile(
+                                  entry: entry,
+                                  isSelected: isSelected,
+                                  onTap: () {
+                                    ref
+                                        .read(selectedStateChangeProvider
+                                            .notifier)
+                                        .state = isSelected ? null : entry;
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     if (selected != null) ...[
@@ -68,13 +202,26 @@ class StateInspectorPage extends ConsumerWidget {
 }
 
 class _Toolbar extends ConsumerWidget {
-  final int count;
-  const _Toolbar({required this.count});
+  final int totalCount;
+  final int visibleCount;
+  final bool autoScroll;
+  final VoidCallback onToggleAutoScroll;
+
+  const _Toolbar({
+    required this.totalCount,
+    required this.visibleCount,
+    required this.autoScroll,
+    required this.onToggleAutoScroll,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    final countText = visibleCount != totalCount
+        ? '$visibleCount / $totalCount changes'
+        : '$totalCount changes';
 
     return Container(
       height: 48,
@@ -88,8 +235,50 @@ class _Toolbar extends ConsumerWidget {
           const SizedBox(width: 8),
           Text('State Inspector', style: theme.textTheme.titleMedium),
           const SizedBox(width: 8),
-          Text('$count changes', style: theme.textTheme.bodySmall),
+          Text(countText, style: theme.textTheme.bodySmall),
           const Spacer(),
+          GestureDetector(
+            onTap: onToggleAutoScroll,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: autoScroll
+                      ? ColorTokens.primary.withValues(alpha: 0.12)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: autoScroll
+                        ? ColorTokens.primary.withValues(alpha: 0.4)
+                        : Colors.grey.withValues(alpha: 0.15),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.arrowDownToLine,
+                        size: 11,
+                        color:
+                            autoScroll ? ColorTokens.primary : Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      'AUTO',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color:
+                            autoScroll ? ColorTokens.primary : Colors.grey,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           SizedBox(
             width: 200,
             child: SearchField(
@@ -103,7 +292,8 @@ class _Toolbar extends ConsumerWidget {
             onTap: () => ref.read(stateChangesProvider.notifier).clear(),
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
-              child: Icon(LucideIcons.trash2, size: 14, color: Colors.grey[500]),
+              child:
+                  Icon(LucideIcons.trash2, size: 14, color: Colors.grey[500]),
             ),
           ),
         ],

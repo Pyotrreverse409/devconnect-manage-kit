@@ -66,8 +66,7 @@ export function setupAxiosInterceptor(axiosInstance: any): void {
         }
       }
 
-      const dc = DevConnect.getInstance();
-      dc.send('client:network:request_start', {
+      DevConnect.safeSend('client:network:request_start', {
         requestId,
         method: (config.method ?? 'GET').toUpperCase(),
         url: fullUrl,
@@ -105,8 +104,7 @@ export function setupAxiosInterceptor(axiosInstance: any): void {
           });
         }
 
-        const dc = DevConnect.getInstance();
-        dc.send('client:network:request_complete', {
+        DevConnect.safeSend('client:network:request_complete', {
           requestId: rid,
           method: (config.method ?? 'GET').toUpperCase(),
           url: fullUrl,
@@ -132,8 +130,7 @@ export function setupAxiosInterceptor(axiosInstance: any): void {
           ? config.url
           : `${config.baseURL ?? ''}${config.url ?? ''}`;
 
-        const dc = DevConnect.getInstance();
-        dc.send('client:network:request_complete', {
+        DevConnect.safeSend('client:network:request_complete', {
           requestId: rid,
           method: (config.method ?? 'GET').toUpperCase(),
           url: fullUrl,

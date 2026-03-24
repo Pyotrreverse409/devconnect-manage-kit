@@ -42,7 +42,7 @@ class DevConnectSignalsObserver {
       // Don't report if value hasn't changed
       if (prev == newValue) return;
 
-      DevConnectClient.instance.reportStateChange(
+      DevConnectClient.safeReportStateChange(
         stateManager: 'signals',
         action: 'signal:$name',
         previousState: prev != null ? {'value': _toSerializable(prev)} : null,
@@ -103,7 +103,7 @@ class DevConnectSignalsObserver {
 
       if (prev == newValue) return;
 
-      DevConnectClient.instance.reportStateChange(
+      DevConnectClient.safeReportStateChange(
         stateManager: 'signals',
         action: 'computed:$name',
         previousState: prev != null ? {'value': _toSerializable(prev)} : null,

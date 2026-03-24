@@ -20,7 +20,8 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   late TextEditingController _portController;
-  List<String> _localIPs = [];
+  List<_NetworkInfo> _networkInfos = [];
+  String _hostName = '';
 
   @override
   void initState() {
@@ -28,22 +29,42 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _portController = TextEditingController(
       text: '${AppConstants.defaultPort}',
     );
-    _loadLocalIPs();
+    _loadNetworkInfo();
   }
 
-  Future<void> _loadLocalIPs() async {
+  Future<void> _loadNetworkInfo() async {
     try {
       final interfaces = await NetworkInterface.list();
-      final ips = <String>[];
+      final infos = <_NetworkInfo>[];
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-            ips.add(addr.address);
+            infos.add(_NetworkInfo(
+              ip: addr.address,
+              interfaceName: iface.name,
+              type: _guessInterfaceType(iface.name),
+            ));
           }
         }
       }
-      if (mounted) setState(() => _localIPs = ips);
+      final hostName = Platform.localHostname;
+      if (mounted) {
+        setState(() {
+          _networkInfos = infos;
+          _hostName = hostName;
+        });
+      }
     } catch (_) {}
+  }
+
+  String _guessInterfaceType(String name) {
+    final lower = name.toLowerCase();
+    if (lower.startsWith('en') || lower.startsWith('eth')) return 'Ethernet';
+    if (lower.startsWith('wl') || lower.contains('wi-fi') || lower.contains('wifi')) return 'WiFi';
+    if (lower.startsWith('utun') || lower.startsWith('tun') || lower.startsWith('ipsec')) return 'VPN';
+    if (lower.startsWith('bridge')) return 'Bridge';
+    if (lower.startsWith('lo')) return 'Loopback';
+    return name;
   }
 
   @override
@@ -85,17 +106,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               _InfoRow('Server Status', server.isRunning ? 'Running' : 'Stopped'),
               _InfoRow('Port', '${server.isRunning ? server.port : AppConstants.defaultPort}'),
               _InfoRow('Connected Devices', '${devices.length}'),
-              if (_localIPs.isNotEmpty) ...[
+              if (_hostName.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                _InfoRow('Host Name', _hostName),
+              ],
+              if (_networkInfos.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text('Your IP (for real device connection)',
                     style: TextStyle(fontSize: 11, color: Colors.grey[500])),
                 const SizedBox(height: 4),
-                ..._localIPs.map((ip) => GestureDetector(
+                ..._networkInfos.map((info) => GestureDetector(
                       onTap: () {
-                        Clipboard.setData(ClipboardData(text: ip));
+                        Clipboard.setData(ClipboardData(text: info.ip));
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Copied $ip'),
+                            content: Text('Copied ${info.ip}'),
                             duration: const Duration(seconds: 1),
                           ),
                         );
@@ -105,7 +130,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 4),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                              horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: ColorTokens.primary.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(6),
@@ -116,13 +141,32 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              Icon(
+                                info.type == 'WiFi'
+                                    ? LucideIcons.wifi
+                                    : info.type == 'VPN'
+                                        ? LucideIcons.shield
+                                        : LucideIcons.cable,
+                                size: 12,
+                                color: ColorTokens.primary,
+                              ),
+                              const SizedBox(width: 6),
                               Text(
-                                ip,
+                                info.ip,
                                 style: const TextStyle(
                                   fontFamily: 'JetBrains Mono',
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   color: ColorTokens.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${info.interfaceName} · ${info.type}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.grey[500],
+                                  fontFamily: 'JetBrains Mono',
                                 ),
                               ),
                               const SizedBox(width: 6),
@@ -393,6 +437,186 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           const SizedBox(height: 20),
 
+          // iOS iproxy
+          _SettingsSection(
+            title: 'iOS Device (USB)',
+            icon: LucideIcons.apple,
+            children: [
+              Text(
+                'iOS real device auto-connects via WiFi (same network).\n'
+                'If you need USB-only (no WiFi), install iproxy:',
+                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () {
+                  Clipboard.setData(
+                    const ClipboardData(text: 'brew install libimobiledevice'),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Copied to clipboard'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF161B22)
+                          : const Color(0xFFF0F0F0),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: theme.dividerColor),
+                    ),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'brew install libimobiledevice',
+                            style: TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 13,
+                              color: ColorTokens.secondary,
+                            ),
+                          ),
+                        ),
+                        Icon(LucideIcons.copy,
+                            size: 14, color: Colors.grey[500]),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              GestureDetector(
+                onTap: () {
+                  final port = server.isRunning
+                      ? server.port
+                      : AppConstants.defaultPort;
+                  Clipboard.setData(
+                    ClipboardData(text: 'iproxy $port $port'),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Copied to clipboard'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF161B22)
+                          : const Color(0xFFF0F0F0),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: theme.dividerColor),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'iproxy ${server.isRunning ? server.port : AppConstants.defaultPort} ${server.isRunning ? server.port : AppConstants.defaultPort}',
+                            style: const TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 13,
+                              color: ColorTokens.secondary,
+                            ),
+                          ),
+                        ),
+                        Icon(LucideIcons.copy,
+                            size: 14, color: Colors.grey[500]),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final port = server.isRunning
+                          ? server.port
+                          : AppConstants.defaultPort;
+                      try {
+                        final result = await Process.run(
+                          'iproxy',
+                          ['$port', '$port'],
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result.exitCode == 0
+                                    ? 'iproxy started - iOS device can connect via localhost:$port'
+                                    : 'iproxy error: ${result.stderr}',
+                              ),
+                              backgroundColor: result.exitCode == 0
+                                  ? ColorTokens.success
+                                  : ColorTokens.error,
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'iproxy not found. Run: brew install libimobiledevice'),
+                              backgroundColor: ColorTokens.error,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(LucideIcons.play, size: 14),
+                    label: const Text('Run iProxy'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: ColorTokens.secondary,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: ColorTokens.success.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                      color: ColorTokens.success.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.wifi, size: 14, color: ColorTokens.success),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'WiFi: If your Mac and iOS device are on the same network, '
+                        'the SDK auto-connects — no USB setup needed.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: ColorTokens.success,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
           // Connection Guide
           _SettingsSection(
             title: 'How to Connect',
@@ -416,7 +640,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 number: '3',
                 title: 'Connect',
                 code: 'Emulator/Simulator: auto-detect (no config needed)\n'
-                    'Real device WiFi:   host: "${_localIPs.isNotEmpty ? _localIPs.first : "your-pc-ip"}"\n'
+                    'Real device WiFi:   host: "${_networkInfos.isNotEmpty ? _networkInfos.first.ip : "your-pc-ip"}"\n'
                     'Real device USB:    click "Run ADB Reverse" above',
               ),
             ],
@@ -624,6 +848,18 @@ class _ConnectionGuideStep extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NetworkInfo {
+  final String ip;
+  final String interfaceName;
+  final String type;
+
+  const _NetworkInfo({
+    required this.ip,
+    required this.interfaceName,
+    required this.type,
+  });
 }
 
 class _InfoRow extends StatelessWidget {

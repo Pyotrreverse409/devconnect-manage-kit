@@ -12,18 +12,22 @@ final networkEntriesProvider =
 
 final networkSearchProvider = StateProvider<String>((ref) => '');
 final networkMethodFilterProvider = StateProvider<String?>((ref) => null);
+final networkSourceFilterProvider =
+    StateProvider<Set<String>>((ref) => {'app', 'library', 'system'});
 
 final filteredNetworkEntriesProvider = Provider<List<NetworkEntry>>((ref) {
   final entries = ref.watch(networkEntriesProvider);
   final search = ref.watch(networkSearchProvider).toLowerCase();
   final methodFilter = ref.watch(networkMethodFilterProvider);
   final selectedDevice = ref.watch(selectedDeviceProvider);
+  final sourceFilter = ref.watch(networkSourceFilterProvider);
 
   return entries.where((e) {
     if (selectedDevice != null && e.deviceId != selectedDevice) return false;
     if (methodFilter != null && e.method.toUpperCase() != methodFilter) {
       return false;
     }
+    if (!sourceFilter.contains(e.source)) return false;
     if (search.isNotEmpty) {
       return e.url.toLowerCase().contains(search);
     }

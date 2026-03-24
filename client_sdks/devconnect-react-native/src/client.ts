@@ -1,9 +1,13 @@
 /**
  * DevConnect React Native Client
  *
- * Auto-detect desktop host, intercept fetch/XHR/console.
- * Supports real iOS/Android device via subnet scanning.
+ * Auto-detect desktop host via:
+ * 1. Metro bundler scriptURL (like Reactotron)
+ * 2. Known emulator/simulator addresses
+ * 3. Subnet scanning for real devices on WiFi
  */
+
+import { Platform, NativeModules } from 'react-native';
 
 interface DevConnectConfig {
   appName: string;
@@ -36,6 +40,69 @@ function generateId(): string {
   });
 }
 
+// ---- Encrypted host cache (persists via AsyncStorage if available) ----
+
+const CACHE_KEY = 'DcN3t$ecR7!';
+let _cachedHost: string | null = null;
+
+function xorCipher(input: string, key: string): string {
+  let out = '';
+  for (let i = 0; i < input.length; i++) {
+    out += String.fromCharCode(input.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return out;
+}
+
+function encryptCache(data: object): string {
+  const plain = JSON.stringify(data);
+  // XOR then base64
+  const xored = xorCipher(plain, CACHE_KEY);
+  // Use btoa-safe encoding (char codes 0-255)
+  try { return btoa(xored); } catch (_) {
+    return Buffer.from(xored, 'binary').toString('base64');
+  }
+}
+
+function decryptCache(encrypted: string): any {
+  try {
+    let decoded: string;
+    try { decoded = atob(encrypted); } catch (_) {
+      decoded = Buffer.from(encrypted, 'base64').toString('binary');
+    }
+    const plain = xorCipher(decoded, CACHE_KEY);
+    return JSON.parse(plain);
+  } catch (_) { return null; }
+}
+
+async function saveHostCache(host: string): Promise<void> {
+  _cachedHost = host;
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage')?.default;
+    if (AsyncStorage) {
+      const encrypted = encryptCache({ h: host, t: Date.now() });
+      await AsyncStorage.setItem('__dc_s', encrypted);
+    }
+  } catch (_) {}
+}
+
+async function readHostCache(): Promise<string | null> {
+  if (_cachedHost) return _cachedHost;
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage')?.default;
+    if (AsyncStorage) {
+      const encrypted = await AsyncStorage.getItem('__dc_s');
+      if (encrypted) {
+        const data = decryptCache(encrypted);
+        if (data && Date.now() - data.t < 24 * 60 * 60 * 1000) {
+          _cachedHost = data.h;
+          return data.h;
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
 // ---- Auto-detect host (supports real device iOS/Android) ----
 
 async function tryConnect(host: string, port: number, timeoutMs: number): Promise<boolean> {
@@ -49,26 +116,127 @@ async function tryConnect(host: string, port: number, timeoutMs: number): Promis
   } catch (_) { return false; }
 }
 
+/**
+ * Extract the dev server host from Metro's scriptURL.
+ * This is how Reactotron auto-discovers the desktop IP on real devices —
+ * the RN runtime already knows the dev machine's IP because Metro serves
+ * the JS bundle from it.
+ */
+function getDevServerHost(): string | null {
+  try {
+    // React Native exposes the bundle URL via SourceCode native module
+    const scriptURL =
+      NativeModules?.SourceCode?.scriptURL ??
+      NativeModules?.SourceCode?.getConstants?.()?.scriptURL;
+    if (scriptURL && typeof scriptURL === 'string') {
+      // scriptURL looks like "http://192.168.1.5:8081/index.bundle?..."
+      const match = scriptURL.match(/^https?:\/\/([^:\/]+)/);
+      if (match && match[1] && match[1] !== 'localhost' && match[1] !== '127.0.0.1') {
+        return match[1];
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
 async function autoDetectHost(port: number): Promise<string> {
-  // 1. Try known addresses first (fast - emulator/simulator)
-  const knownHosts = ['localhost', '10.0.2.2', '10.0.3.2', '127.0.0.1'];
-  for (const host of knownHosts) {
-    if (await tryConnect(host, port, 600)) return host;
+  // 0. Try cached host from previous session (instant reconnect)
+  const cached = await readHostCache();
+  if (cached && await tryConnect(cached, port, 600)) return cached;
+
+  // 1. Race: Metro scriptURL + known hosts in parallel
+  //    USB (adb reverse) → localhost/10.0.2.2 responds fast
+  //    WiFi debug → Metro host responds fast
+  const raceCandidates: Promise<string | null>[] = [];
+
+  // Metro bundler host (real device gets desktop IP from bundle URL)
+  const devHost = getDevServerHost();
+  if (devHost) {
+    raceCandidates.push(
+      tryConnect(devHost, port, 800).then((ok) => ok ? devHost : null)
+    );
   }
 
-  // 2. Scan local subnets for real device (iOS/Android)
-  const subnets = ['192.168.1', '192.168.0', '192.168.2', '10.0.0', '10.0.1', '172.16.0'];
+  // Known emulator/simulator/USB addresses
+  for (const host of ['localhost', '10.0.2.2', '10.0.3.2', '127.0.0.1']) {
+    raceCandidates.push(
+      tryConnect(host, port, 800).then((ok) => ok ? host : null)
+    );
+  }
+
+  // First non-null wins
+  const raceResult = await firstNonNull(raceCandidates);
+  if (raceResult) { saveHostCache(raceResult); return raceResult; }
+
+  // 2. Scan local subnets for real device (WiFi)
+  const subnets: string[] = [];
+  if (devHost) {
+    const parts = devHost.split('.');
+    if (parts.length === 4) {
+      subnets.push(`${parts[0]}.${parts[1]}.${parts[2]}`);
+    }
+  }
+  for (const s of ['192.168.1', '192.168.0', '192.168.2', '10.0.0', '10.0.1', '172.16.0']) {
+    if (!subnets.includes(s)) subnets.push(s);
+  }
+
   for (const subnet of subnets) {
-    const batch = Array.from({ length: 20 }, (_, i) => `${subnet}.${i + 1}`);
+    const batch = Array.from({ length: 30 }, (_, i) => `${subnet}.${i + 1}`);
     const results = await Promise.allSettled(
       batch.map((h) => tryConnect(h, port, 400).then((ok) => ok ? h : null))
     );
     for (const r of results) {
-      if (r.status === 'fulfilled' && r.value) return r.value;
+      if (r.status === 'fulfilled' && r.value) {
+        saveHostCache(r.value);
+        return r.value;
+      }
     }
   }
 
   return 'localhost';
+}
+
+/** Returns the first non-null resolved value from a list of promises. */
+async function firstNonNull(promises: Promise<string | null>[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    let remaining = promises.length;
+    for (const p of promises) {
+      p.then((v) => {
+        if (v != null) resolve(v);
+        else if (--remaining === 0) resolve(null);
+      }).catch(() => {
+        if (--remaining === 0) resolve(null);
+      });
+    }
+  });
+}
+
+// ---- URL classification (app vs library) ----
+
+const libraryDomains = [
+  'firebaseio.com', 'googleapis.com', 'firebase.google.com',
+  'firebaseinstallations.googleapis.com', 'fcmregistrations.googleapis.com',
+  'crashlyticsreports-pa.googleapis.com', 'firebaseremoteconfig.googleapis.com',
+  'google-analytics.com', 'analytics.google.com', 'googletagmanager.com',
+  'app-measurement.com', 'doubleclick.net',
+  'facebook.com', 'graph.facebook.com', 'fbcdn.net',
+  'sentry.io', 'bugsnag.com', 'instabug.com',
+  'segment.io', 'segment.com', 'mixpanel.com', 'amplitude.com',
+  'appsflyer.com', 'adjust.com', 'branch.io',
+  'codepush.appcenter.ms', 'appcenter.ms',
+  'clients3.google.com', 'clients4.google.com',
+  'connectivitycheck', 'generate_204',
+];
+
+function classifyUrl(url: string): string {
+  try {
+    const lower = url.toLowerCase();
+    for (const domain of libraryDomains) {
+      if (lower.includes(domain)) return 'library';
+    }
+    if (lower.includes('/generate_204') || lower.includes('connectivitycheck')) return 'system';
+  } catch (_) {}
+  return 'app';
 }
 
 // ---- Main Class ----
@@ -77,6 +245,9 @@ export class DevConnect {
   private static instance: DevConnect | null = null;
   private ws: WebSocket | null = null;
   private config: Required<DevConnectConfig>;
+  /** Pre-init queue: messages sent before init() is called */
+  private static preInitQueue: Array<{ type: string; payload: Record<string, any> }> = [];
+
   private deviceId: string;
   private connected = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -135,6 +306,14 @@ export class DevConnect {
       if (dc.config.autoInterceptFetch) dc.patchFetch();
       if (dc.config.autoInterceptXHR) dc.patchXHR();
       if (dc.config.autoInterceptConsole) dc.patchConsole();
+
+      // Flush pre-init queue (messages from middleware that ran before init)
+      if (DevConnect.preInitQueue.length > 0) {
+        for (const msg of DevConnect.preInitQueue) {
+          dc.send(msg.type, msg.payload);
+        }
+        DevConnect.preInitQueue = [];
+      }
     }
 
     return dc;
@@ -145,6 +324,21 @@ export class DevConnect {
       throw new Error('DevConnect not initialized. Call DevConnect.init() first.');
     }
     return DevConnect.instance;
+  }
+
+  /** Returns instance or null if not yet initialized. Use this in middleware/plugins that may run before init(). */
+  static getInstanceSafe(): DevConnect | null {
+    return DevConnect.instance ?? null;
+  }
+
+  /** Send a message safely - queues to pre-init queue if init() hasn't been called yet */
+  static safeSend(type: string, payload: Record<string, any>): void {
+    const instance = DevConnect.getInstanceSafe();
+    if (instance) {
+      instance.send(type, payload);
+    } else if (DevConnect.preInitQueue.length < 500) {
+      DevConnect.preInitQueue.push({ type, payload });
+    }
   }
 
   // ---- WebSocket ----
@@ -197,17 +391,16 @@ export class DevConnect {
   }
 
   private sendHandshake(): void {
-    const Platform = (global as any).Platform;
+    const os = Platform.OS; // 'ios' | 'android'
+    const version = Platform.Version; // e.g. '17.4' (iOS) or 34 (Android API level)
+    const osLabel = os === 'ios' ? 'iOS' : os === 'android' ? 'Android' : os;
+
     this.send('client:handshake', {
       deviceInfo: {
         deviceId: this.deviceId,
-        deviceName: Platform
-          ? `${Platform.OS} ${Platform.Version ?? ''}`.trim()
-          : 'React Native Device',
+        deviceName: `${osLabel} ${version}`,
         platform: 'react_native',
-        osVersion: Platform
-          ? `${Platform.OS} ${Platform.Version ?? ''}`.trim()
-          : 'unknown',
+        osVersion: `${osLabel} ${version}`,
         appName: this.config.appName,
         appVersion: this.config.appVersion,
         sdkVersion: '1.0.0',
@@ -270,7 +463,8 @@ export class DevConnect {
         try { requestBody = JSON.parse(init.body as string); } catch (_) { requestBody = String(init.body); }
       }
 
-      dc.send('client:network:request_start', { requestId, method, url, startTime, requestHeaders: reqHeaders, requestBody });
+      const source = classifyUrl(url);
+      dc.send('client:network:request_start', { requestId, method, url, startTime, requestHeaders: reqHeaders, requestBody, source });
 
       try {
         const response = await originalFetch(input, init);
@@ -283,14 +477,14 @@ export class DevConnect {
         dc.send('client:network:request_complete', {
           requestId, method, url, statusCode: response.status, startTime,
           endTime: Date.now(), duration: Date.now() - startTime,
-          requestHeaders: reqHeaders, responseHeaders: resHeaders, requestBody, responseBody,
+          requestHeaders: reqHeaders, responseHeaders: resHeaders, requestBody, responseBody, source,
         });
         return response;
       } catch (error: any) {
         dc.send('client:network:request_complete', {
           requestId, method, url, statusCode: 0, startTime,
           endTime: Date.now(), duration: Date.now() - startTime,
-          requestHeaders: reqHeaders, requestBody, error: error?.message ?? String(error),
+          requestHeaders: reqHeaders, requestBody, error: error?.message ?? String(error), source,
         });
         throw error;
       }
@@ -320,7 +514,7 @@ export class DevConnect {
       xhr.send = (body?: any) => {
         startTime = Date.now();
         if (body) { try { requestBody = JSON.parse(body); } catch (_) { requestBody = body; } }
-        dc.send('client:network:request_start', { requestId, method, url, startTime, requestHeaders: reqHeaders, requestBody });
+        dc.send('client:network:request_start', { requestId, method, url, startTime, requestHeaders: reqHeaders, requestBody, source: classifyUrl(url) });
         return origSend(body);
       };
 
@@ -328,11 +522,20 @@ export class DevConnect {
         const resHeaders: Record<string, string> = {};
         try { xhr.getAllResponseHeaders().split('\r\n').forEach((l: string) => { const i = l.indexOf(':'); if (i > 0) resHeaders[l.substring(0, i).trim()] = l.substring(i + 1).trim(); }); } catch (_) {}
         let responseBody: any;
-        try { responseBody = JSON.parse(xhr.responseText); } catch (_) { responseBody = xhr.responseText; }
+        // Only read responseText if responseType allows it (not blob/arraybuffer)
+        const rt = xhr.responseType;
+        if (!rt || rt === '' || rt === 'text') {
+          try { responseBody = JSON.parse(xhr.responseText); } catch (_) { responseBody = xhr.responseText; }
+        } else if (rt === 'json') {
+          responseBody = xhr.response;
+        } else {
+          responseBody = `<${rt} ${xhr.response?.size ?? xhr.response?.byteLength ?? '?'} bytes>`;
+        }
         dc.send('client:network:request_complete', {
           requestId, method, url, statusCode: xhr.status, startTime,
           endTime: Date.now(), duration: Date.now() - startTime,
           requestHeaders: reqHeaders, responseHeaders: resHeaders, requestBody, responseBody,
+          source: classifyUrl(url),
           ...(xhr.status === 0 ? { error: 'Network request failed' } : {}),
         });
       });
@@ -356,9 +559,22 @@ export class DevConnect {
       'Debugger and device', 'Download the React DevTools', 'New NativeEventEmitter',
       'Sending `', 'ViewManager:', 'Unbalanced calls', 'componentWillReceiveProps',
       'componentWillMount', 'Each child in a list', 'VirtualizedList:', 'LogBox',
+      'DevConnect', '[DevConnect]',
     ];
 
-    const isSys = (args: any[]) => args.length === 0 || systemPrefixes.some((p) => String(args[0]).startsWith(p));
+    const isEmptyObj = (args: any[]) => {
+      if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+        try { if (Object.keys(args[0]).length === 0) return true; } catch (_) {}
+      }
+      return false;
+    };
+
+    const isInternalError = (args: any[]) => {
+      const s = String(args[0] ?? '');
+      return s.includes("'responseText'") || s.includes('responseType') || s.includes('DevConnect');
+    };
+
+    const isSys = (args: any[]) => args.length === 0 || isEmptyObj(args) || isInternalError(args) || systemPrefixes.some((p) => String(args[0]).startsWith(p));
     const toStr = (args: any[]) => args.map((a) => typeof a === 'string' ? a : (() => { try { return JSON.stringify(a, null, 2); } catch (_) { return String(a); } })()).join(' ');
     const toMeta = (args: any[]): Record<string, any> | undefined => {
       if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) { try { return JSON.parse(JSON.stringify(args[0])); } catch (_) {} }
@@ -381,24 +597,24 @@ export class DevConnect {
   // ---- Public API ----
 
   static log(message: string, tag?: string, metadata?: Record<string, any>): void {
-    DevConnect.getInstance().send('client:log', { level: 'info', message, ...(tag ? { tag } : {}), ...(metadata ? { metadata } : {}) });
+    DevConnect.safeSend('client:log', { level: 'info', message, ...(tag ? { tag } : {}), ...(metadata ? { metadata } : {}) });
   }
   static debug(message: string, tag?: string, metadata?: Record<string, any>): void {
-    DevConnect.getInstance().send('client:log', { level: 'debug', message, ...(tag ? { tag } : {}), ...(metadata ? { metadata } : {}) });
+    DevConnect.safeSend('client:log', { level: 'debug', message, ...(tag ? { tag } : {}), ...(metadata ? { metadata } : {}) });
   }
   static warn(message: string, tag?: string, metadata?: Record<string, any>): void {
-    DevConnect.getInstance().send('client:log', { level: 'warn', message, ...(tag ? { tag } : {}), ...(metadata ? { metadata } : {}) });
+    DevConnect.safeSend('client:log', { level: 'warn', message, ...(tag ? { tag } : {}), ...(metadata ? { metadata } : {}) });
   }
   static error(message: string, tag?: string, stackTrace?: string, metadata?: Record<string, any>): void {
-    DevConnect.getInstance().send('client:log', { level: 'error', message, ...(tag ? { tag } : {}), ...(stackTrace ? { stackTrace } : {}), ...(metadata ? { metadata } : {}) });
+    DevConnect.safeSend('client:log', { level: 'error', message, ...(tag ? { tag } : {}), ...(stackTrace ? { stackTrace } : {}), ...(metadata ? { metadata } : {}) });
   }
 
   static reportStateChange(opts: { stateManager: string; action: string; previousState?: Record<string, any>; nextState?: Record<string, any>; diff?: Array<Record<string, any>> }): void {
-    DevConnect.getInstance().send('client:state:change', opts);
+    DevConnect.safeSend('client:state:change', opts);
   }
 
   static reportStorageOperation(opts: { storageType: string; key: string; value?: any; operation: string }): void {
-    DevConnect.getInstance().send('client:storage:operation', opts);
+    DevConnect.safeSend('client:storage:operation', opts);
   }
 
   // ---- Redux dispatch from desktop ----
@@ -413,14 +629,31 @@ export class DevConnect {
    * ```
    */
   static connectReduxStore(store: any): void {
-    DevConnect.getInstance()._reduxStore = store;
-    // Send initial state snapshot
-    try {
-      DevConnect.getInstance().send('client:state:snapshot', {
+    const instance = DevConnect.getInstanceSafe();
+    if (instance) {
+      instance._reduxStore = store;
+      try {
+        instance.send('client:state:snapshot', {
+          stateManager: 'redux',
+          state: JSON.parse(JSON.stringify(store.getState())),
+        });
+      } catch (_) {}
+    } else {
+      // Store reference will be set when init() completes
+      DevConnect.safeSend('client:state:snapshot', {
         stateManager: 'redux',
-        state: JSON.parse(JSON.stringify(store.getState())),
+        state: (() => { try { return JSON.parse(JSON.stringify(store.getState())); } catch (_) { return {}; } })(),
       });
-    } catch (_) {}
+      // Defer store binding - check periodically until init completes
+      const interval = setInterval(() => {
+        const dc = DevConnect.getInstanceSafe();
+        if (dc) {
+          dc._reduxStore = store;
+          clearInterval(interval);
+        }
+      }, 100);
+      setTimeout(() => clearInterval(interval), 10000);
+    }
   }
 
   // ---- State snapshot + restore ----
@@ -435,7 +668,19 @@ export class DevConnect {
    * ```
    */
   static onStateRestore(handler: (state: any) => void): void {
-    DevConnect.getInstance()._stateRestoreHandler = handler;
+    const instance = DevConnect.getInstanceSafe();
+    if (instance) {
+      instance._stateRestoreHandler = handler;
+    } else {
+      const interval = setInterval(() => {
+        const dc = DevConnect.getInstanceSafe();
+        if (dc) {
+          dc._stateRestoreHandler = handler;
+          clearInterval(interval);
+        }
+      }, 100);
+      setTimeout(() => clearInterval(interval), 10000);
+    }
   }
 
   /**
@@ -443,7 +688,7 @@ export class DevConnect {
    */
   static sendStateSnapshot(stateManager: string, state: any): void {
     try {
-      DevConnect.getInstance().send('client:state:snapshot', {
+      DevConnect.safeSend('client:state:snapshot', {
         stateManager,
         state: JSON.parse(JSON.stringify(state)),
       });
@@ -464,24 +709,23 @@ export class DevConnect {
    * ```
    */
   static benchmark(title: string): void {
-    const dc = DevConnect.getInstance();
-    dc._benchmarks.set(title, {
-      title,
-      startTime: Date.now(),
-      steps: [],
-    });
+    const dc = DevConnect.getInstanceSafe();
+    if (dc) {
+      dc._benchmarks.set(title, { title, startTime: Date.now(), steps: [] });
+    }
   }
 
   static benchmarkStep(title: string, stepTitle: string): void {
-    const dc = DevConnect.getInstance();
-    const b = dc._benchmarks.get(title);
-    if (b) {
-      b.steps.push({ title: stepTitle, timestamp: Date.now() });
+    const dc = DevConnect.getInstanceSafe();
+    if (dc) {
+      const b = dc._benchmarks.get(title);
+      if (b) b.steps.push({ title: stepTitle, timestamp: Date.now() });
     }
   }
 
   static benchmarkStop(title: string): void {
-    const dc = DevConnect.getInstance();
+    const dc = DevConnect.getInstanceSafe();
+    if (!dc) return;
     const b = dc._benchmarks.get(title);
     if (b) {
       const endTime = Date.now();
@@ -519,7 +763,19 @@ export class DevConnect {
    * ```
    */
   static registerCommand(name: string, handler: (args?: any) => any): void {
-    DevConnect.getInstance()._customCommandHandlers.set(name, handler);
+    const instance = DevConnect.getInstanceSafe();
+    if (instance) {
+      instance._customCommandHandlers.set(name, handler);
+    } else {
+      const interval = setInterval(() => {
+        const dc = DevConnect.getInstanceSafe();
+        if (dc) {
+          dc._customCommandHandlers.set(name, handler);
+          clearInterval(interval);
+        }
+      }, 100);
+      setTimeout(() => clearInterval(interval), 10000);
+    }
   }
 }
 

@@ -39,7 +39,7 @@ export const devConnectTransport = (props: {
     : JSON.stringify(props.msg);
 
   try {
-    DevConnect.getInstance().send('client:log', {
+    DevConnect.safeSend('client:log', {
       level,
       message,
       tag,
@@ -84,7 +84,7 @@ export function patchLoglevel(loglevelInstance: any): void {
       };
 
       try {
-        DevConnect.getInstance().send('client:log', {
+        DevConnect.safeSend('client:log', {
           level: levelMap[methodName] ?? 'debug',
           message,
           tag: loggerName ? `loglevel:${loggerName}` : 'loglevel',
@@ -126,7 +126,7 @@ export const winstonDevConnectTransport = {
         error: 'error',
       };
 
-      DevConnect.getInstance().send('client:log', {
+      DevConnect.safeSend('client:log', {
         level: levelMap[level] ?? 'debug',
         message,
         tag: 'winston',
@@ -163,14 +163,14 @@ export function pinoDevConnectTransport() {
           60: 'error', // fatal
         };
 
-        DevConnect.getInstance().send('client:log', {
+        DevConnect.safeSend('client:log', {
           level: pinoLevels[parsed.level] ?? 'debug',
           message: parsed.msg ?? msg,
           tag: parsed.name ? `pino:${parsed.name}` : 'pino',
           metadata: parsed,
         });
       } catch (_) {
-        DevConnect.getInstance().send('client:log', {
+        DevConnect.safeSend('client:log', {
           level: 'debug',
           message: msg,
           tag: 'pino',
@@ -207,7 +207,7 @@ export function bunyanDevConnectStream() {
           60: 'error', // fatal
         };
 
-        DevConnect.getInstance().send('client:log', {
+        DevConnect.safeSend('client:log', {
           level: bunyanLevels[parsed.level] ?? 'debug',
           message: parsed.msg ?? JSON.stringify(parsed),
           tag: parsed.name ? `bunyan:${parsed.name}` : 'bunyan',
@@ -260,7 +260,7 @@ export function wrapLogger(
           .join(' ');
 
         try {
-          DevConnect.getInstance().send('client:log', {
+          DevConnect.safeSend('client:log', {
             level: methodLevelMap[method] ?? 'debug',
             message,
             tag: name,

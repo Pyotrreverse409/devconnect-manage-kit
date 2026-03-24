@@ -34,7 +34,7 @@ class DevConnectSecureStorageReporter {
   /// [value] - The value that was read (will be masked if [maskValues] is true).
   void reportRead(String key, {dynamic value}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'secure_storage',
         key: key,
         value: _processValue(value),
@@ -49,7 +49,7 @@ class DevConnectSecureStorageReporter {
   /// [value] - The value that was written (will be masked if [maskValues] is true).
   void reportWrite(String key, {dynamic value}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'secure_storage',
         key: key,
         value: _processValue(value),
@@ -63,7 +63,7 @@ class DevConnectSecureStorageReporter {
   /// [key] - The storage key that was deleted.
   void reportDelete(String key) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'secure_storage',
         key: key,
         operation: 'delete',
@@ -74,7 +74,7 @@ class DevConnectSecureStorageReporter {
   /// Report a deleteAll / clear operation on secure storage.
   void reportDeleteAll() {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'secure_storage',
         key: '*',
         operation: 'clear',
@@ -88,7 +88,7 @@ class DevConnectSecureStorageReporter {
   /// [exists] - Whether the key exists.
   void reportContainsKey(String key, {required bool exists}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'secure_storage',
         key: key,
         value: {'exists': exists},
@@ -102,7 +102,7 @@ class DevConnectSecureStorageReporter {
   /// [count] - Number of entries returned.
   void reportReadAll({int? count}) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'secure_storage',
         key: '*',
         value: {

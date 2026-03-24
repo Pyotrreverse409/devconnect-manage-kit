@@ -64,7 +64,7 @@ class DevConnectDioInterceptor {
         }
       } catch (_) {}
 
-      DevConnectClient.instance.reportNetworkStart(
+      DevConnectClient.safeReportNetworkStart(
         requestId: requestId,
         method: method,
         url: url,
@@ -154,7 +154,7 @@ class DevConnectDioInterceptor {
         }
       } catch (_) {}
 
-      DevConnectClient.instance.reportNetworkComplete(
+      DevConnectClient.safeReportNetworkComplete(
         requestId: requestId,
         method: method,
         url: url,
@@ -200,7 +200,7 @@ class DevConnectDioInterceptor {
         responseBody = error.response?.data;
       } catch (_) {}
 
-      DevConnectClient.instance.reportNetworkComplete(
+      DevConnectClient.safeReportNetworkComplete(
         requestId: requestId,
         method: method,
         url: url,

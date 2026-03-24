@@ -62,7 +62,7 @@ class DevConnectGetConnectInterceptor {
           headers: headers,
         );
 
-        DevConnectClient.instance.reportNetworkStart(
+        DevConnectClient.safeReportNetworkStart(
           requestId: requestId,
           method: method,
           url: url,
@@ -128,7 +128,7 @@ class DevConnectGetConnectInterceptor {
             ? _tryGet<String?>(() => response.statusText?.toString())
             : null;
 
-        DevConnectClient.instance.reportNetworkComplete(
+        DevConnectClient.safeReportNetworkComplete(
           requestId: requestId,
           method: method,
           url: url,

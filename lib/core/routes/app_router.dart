@@ -5,6 +5,7 @@ import '../../features/all_events/presentation/pages/all_events_page.dart';
 import '../../features/console/presentation/pages/console_page.dart';
 import '../../features/database_viewer/presentation/pages/database_viewer_page.dart';
 import '../../features/network_inspector/presentation/pages/network_inspector_page.dart';
+import '../../features/last_connected/presentation/pages/last_connected_page.dart';
 import '../../features/settings/presentation/pages/settings_page.dart';
 import '../../features/state_inspector/presentation/pages/state_inspector_page.dart';
 import '../../features/storage_viewer/presentation/pages/storage_viewer_page.dart';
@@ -60,6 +61,12 @@ final appRouter = GoRouter(
           path: '/database',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: DatabaseViewerPage(),
+          ),
+        ),
+        GoRoute(
+          path: '/history',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: LastConnectedPage(),
           ),
         ),
         GoRoute(

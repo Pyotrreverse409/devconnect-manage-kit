@@ -14,6 +14,7 @@ abstract class DeviceInfo with _$DeviceInfo {
     required String appVersion,
     String? sdkVersion,
     DateTime? connectedAt,
+    String? clientIp,
   }) = _DeviceInfo;
 
   factory DeviceInfo.fromJson(Map<String, dynamic> json) =>

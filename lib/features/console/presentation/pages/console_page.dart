@@ -13,6 +13,19 @@ import '../../../../models/log/log_entry.dart';
 import '../../../../server/providers/server_providers.dart';
 import '../../provider/console_providers.dart';
 
+Color _levelColor(LogLevel level) {
+  switch (level) {
+    case LogLevel.debug:
+      return ColorTokens.logDebug;
+    case LogLevel.info:
+      return ColorTokens.logInfo;
+    case LogLevel.warn:
+      return ColorTokens.logWarn;
+    case LogLevel.error:
+      return ColorTokens.logError;
+  }
+}
+
 class ConsolePage extends ConsumerStatefulWidget {
   const ConsolePage({super.key});
 
@@ -21,9 +34,26 @@ class ConsolePage extends ConsumerStatefulWidget {
 }
 
 class _ConsolePageState extends ConsumerState<ConsolePage> {
+  static const _pageSize = 50;
+
   final _scrollController = ScrollController();
   bool _autoScroll = true;
   LogEntry? _selectedEntry;
+  int _maxVisible = _pageSize;
+  bool _loadingMore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      if (!_autoScroll &&
+          !_loadingMore &&
+          _scrollController.hasClients &&
+          _scrollController.position.pixels < 50) {
+        _loadMore();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -31,10 +61,37 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
     super.dispose();
   }
 
+  void _loadMore() {
+    final totalEntries = ref.read(filteredConsoleEntriesProvider).length;
+    if (_maxVisible >= totalEntries) return;
+
+    setState(() => _loadingMore = true);
+    final oldMaxExtent = _scrollController.position.maxScrollExtent;
+
+    setState(() {
+      _maxVisible = (_maxVisible + _pageSize).clamp(0, totalEntries);
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        final newMaxExtent = _scrollController.position.maxScrollExtent;
+        final delta = newMaxExtent - oldMaxExtent;
+        _scrollController.jumpTo(_scrollController.position.pixels + delta);
+      }
+      setState(() => _loadingMore = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final entries = ref.watch(filteredConsoleEntriesProvider);
     final theme = Theme.of(context);
+
+    // Compute visible subset for pagination
+    final startIndex =
+        (entries.length - _maxVisible).clamp(0, entries.length);
+    final visibleEntries = entries.sublist(startIndex);
+    final hasMore = startIndex > 0;
 
     // Auto scroll to bottom
     if (_autoScroll && entries.isNotEmpty) {
@@ -51,10 +108,28 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
 
     return Column(
       children: [
-        // Toolbar
-        _buildToolbar(context, entries.length),
+        _ConsoleToolbar(
+          entryCount: entries.length,
+          visibleCount:
+              visibleEntries.length != entries.length
+                  ? visibleEntries.length
+                  : null,
+          autoScroll: _autoScroll,
+          onToggleAutoScroll: () {
+            setState(() {
+              _autoScroll = !_autoScroll;
+              if (_autoScroll) _maxVisible = _pageSize;
+            });
+          },
+          onClear: () {
+            ref.read(consoleEntriesProvider.notifier).clear();
+            setState(() {
+              _selectedEntry = null;
+              _maxVisible = _pageSize;
+            });
+          },
+        ),
         const Divider(height: 1),
-        // Content
         Expanded(
           child: entries.isEmpty
               ? const EmptyState(
@@ -68,30 +143,71 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
                     // Log list
                     Expanded(
                       flex: _selectedEntry != null ? 3 : 1,
-                      child: ListView.builder(
-                        controller: _scrollController,
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) {
-                          final entry = entries[index];
-                          final isSelected = _selectedEntry?.id == entry.id;
-                          return _LogEntryTile(
-                            entry: entry,
-                            isSelected: isSelected,
-                            onTap: () {
-                              setState(() {
-                                _selectedEntry = isSelected ? null : entry;
-                              });
-                            },
-                          );
-                        },
+                      child: Column(
+                        children: [
+                          if (hasMore && !_autoScroll)
+                            GestureDetector(
+                              onTap: _loadMore,
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 6),
+                                  color: ColorTokens.primary
+                                      .withValues(alpha: 0.05),
+                                  child: Center(
+                                    child: Text(
+                                      '${entries.length - visibleEntries.length} older logs — tap to load more',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: ColorTokens.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Expanded(
+                            child: ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 6),
+                              itemCount: visibleEntries.length,
+                              itemBuilder: (context, index) {
+                                final entry = visibleEntries[index];
+                                final isSelected =
+                                    _selectedEntry?.id == entry.id;
+                                return _LogEntryCard(
+                                  entry: entry,
+                                  isSelected: isSelected,
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedEntry =
+                                          isSelected ? null : entry;
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     // Detail panel
                     if (_selectedEntry != null) ...[
-                      VerticalDivider(width: 1, color: theme.dividerColor),
+                      VerticalDivider(
+                        width: 1,
+                        color: theme.dividerColor,
+                      ),
                       Expanded(
                         flex: 2,
-                        child: _LogDetailPanel(entry: _selectedEntry!),
+                        child: _LogDetailPanel(
+                          entry: _selectedEntry!,
+                          onClose: () =>
+                              setState(() => _selectedEntry = null),
+                        ),
                       ),
                     ],
                   ],
@@ -100,8 +216,29 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
       ],
     );
   }
+}
 
-  Widget _buildToolbar(BuildContext context, int count) {
+// ---------------------------------------------------------------------------
+// Toolbar
+// ---------------------------------------------------------------------------
+
+class _ConsoleToolbar extends ConsumerWidget {
+  final int entryCount;
+  final int? visibleCount;
+  final bool autoScroll;
+  final VoidCallback onToggleAutoScroll;
+  final VoidCallback onClear;
+
+  const _ConsoleToolbar({
+    required this.entryCount,
+    this.visibleCount,
+    required this.autoScroll,
+    required this.onToggleAutoScroll,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final activeFilters = ref.watch(consoleFilterProvider);
@@ -114,24 +251,23 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
       ),
       child: Row(
         children: [
+          // Title section
           Icon(LucideIcons.terminal, size: 16, color: ColorTokens.primary),
           const SizedBox(width: 8),
-          Text(
-            'Console',
-            style: theme.textTheme.titleMedium,
-          ),
+          Text('Console', style: theme.textTheme.titleMedium),
           const SizedBox(width: 8),
-          Text(
-            '$count entries',
-            style: theme.textTheme.bodySmall,
+          _CountPill(
+            count: entryCount,
+            visibleCount: visibleCount,
           ),
-          const Spacer(),
-          // Level filters
+          const SizedBox(width: 16),
+
+          // Level filter chips
           ...LogLevel.values.map((level) {
             final isActive = activeFilters.contains(level);
             return Padding(
               padding: const EdgeInsets.only(right: 4),
-              child: _FilterChip(
+              child: _LevelFilterChip(
                 label: level.name.toUpperCase(),
                 isActive: isActive,
                 color: _levelColor(level),
@@ -150,56 +286,88 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
               ),
             );
           }),
-          const SizedBox(width: 8),
+
+          const Spacer(),
+
+          // Search
           SizedBox(
-            width: 200,
+            width: 220,
             child: SearchField(
-              hintText: 'Filter logs...',
+              hintText: 'Search logs...',
               onChanged: (value) {
                 ref.read(consoleSearchProvider.notifier).state = value;
               },
             ),
           ),
           const SizedBox(width: 8),
-          // Auto scroll toggle
-          _ToolbarButton(
+
+          // Auto-scroll toggle
+          _ToolbarIconButton(
             icon: LucideIcons.arrowDownToLine,
-            isActive: _autoScroll,
             tooltip: 'Auto-scroll',
-            onTap: () => setState(() => _autoScroll = !_autoScroll),
+            isActive: autoScroll,
+            onTap: onToggleAutoScroll,
           ),
           const SizedBox(width: 4),
-          _ToolbarButton(
+
+          // Clear
+          _ToolbarIconButton(
             icon: LucideIcons.trash2,
-            tooltip: 'Clear',
-            onTap: () => ref.read(consoleEntriesProvider.notifier).clear(),
+            tooltip: 'Clear console',
+            onTap: onClear,
           ),
         ],
       ),
     );
   }
+}
 
-  Color _levelColor(LogLevel level) {
-    switch (level) {
-      case LogLevel.debug:
-        return ColorTokens.logDebug;
-      case LogLevel.info:
-        return ColorTokens.logInfo;
-      case LogLevel.warn:
-        return ColorTokens.logWarn;
-      case LogLevel.error:
-        return ColorTokens.logError;
-    }
+// ---------------------------------------------------------------------------
+// Count pill
+// ---------------------------------------------------------------------------
+
+class _CountPill extends StatelessWidget {
+  final int count;
+  final int? visibleCount;
+
+  const _CountPill({required this.count, this.visibleCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        visibleCount != null ? '$visibleCount / $count' : '$count',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'JetBrains Mono',
+          color: isDark ? Colors.grey[400] : Colors.grey[600],
+        ),
+      ),
+    );
   }
 }
 
-class _FilterChip extends StatelessWidget {
+// ---------------------------------------------------------------------------
+// Level filter chip
+// ---------------------------------------------------------------------------
+
+class _LevelFilterChip extends StatefulWidget {
   final String label;
   final bool isActive;
   final Color color;
   final VoidCallback onTap;
 
-  const _FilterChip({
+  const _LevelFilterChip({
     required this.label,
     required this.isActive,
     required this.color,
@@ -207,27 +375,50 @@ class _FilterChip extends StatelessWidget {
   });
 
   @override
+  State<_LevelFilterChip> createState() => _LevelFilterChipState();
+}
+
+class _LevelFilterChipState extends State<_LevelFilterChip> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: isActive ? color.withValues(alpha: 0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-              color: isActive ? color.withValues(alpha: 0.4) : Colors.grey.withValues(alpha: 0.2),
-              width: 1,
+    final bg = widget.isActive
+        ? widget.color.withValues(alpha: 0.15)
+        : _hovered
+            ? widget.color.withValues(alpha: 0.07)
+            : Colors.transparent;
+
+    final borderColor = widget.isActive
+        ? widget.color.withValues(alpha: 0.4)
+        : _hovered
+            ? widget.color.withValues(alpha: 0.25)
+            : Colors.grey.withValues(alpha: 0.2);
+
+    return Tooltip(
+      message: '${widget.isActive ? "Hide" : "Show"} ${widget.label} logs',
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor, width: 1),
             ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: isActive ? color : Colors.grey,
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: widget.isActive ? widget.color : Colors.grey[500],
+              ),
             ),
           ),
         ),
@@ -236,13 +427,17 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _ToolbarButton extends StatelessWidget {
+// ---------------------------------------------------------------------------
+// Toolbar icon button
+// ---------------------------------------------------------------------------
+
+class _ToolbarIconButton extends StatefulWidget {
   final IconData icon;
   final String tooltip;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _ToolbarButton({
+  const _ToolbarIconButton({
     required this.icon,
     required this.tooltip,
     this.isActive = false,
@@ -250,26 +445,43 @@ class _ToolbarButton extends StatelessWidget {
   });
 
   @override
+  State<_ToolbarIconButton> createState() => _ToolbarIconButtonState();
+}
+
+class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
+    final activeBg = ColorTokens.primary.withValues(alpha: 0.15);
+    final hoverBg = Colors.grey.withValues(alpha: 0.1);
+
     return Tooltip(
-      message: tooltip,
+      message: widget.tooltip,
       child: GestureDetector(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          child: Container(
-            width: 28,
-            height: 28,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
-              color: isActive
-                  ? ColorTokens.primary.withValues(alpha: 0.15)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
+              color: widget.isActive
+                  ? activeBg
+                  : _hovered
+                      ? hoverBg
+                      : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              icon,
-              size: 14,
-              color: isActive ? ColorTokens.primary : Colors.grey[500],
+              widget.icon,
+              size: 15,
+              color: widget.isActive
+                  ? ColorTokens.primary
+                  : Colors.grey[500],
             ),
           ),
         ),
@@ -278,21 +490,35 @@ class _ToolbarButton extends StatelessWidget {
   }
 }
 
-class _LogEntryTile extends ConsumerWidget {
+// ---------------------------------------------------------------------------
+// Log entry card
+// ---------------------------------------------------------------------------
+
+class _LogEntryCard extends ConsumerStatefulWidget {
   final LogEntry entry;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _LogEntryTile({
+  const _LogEntryCard({
     required this.entry,
     required this.isSelected,
     required this.onTap,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_LogEntryCard> createState() => _LogEntryCardState();
+}
+
+class _LogEntryCardState extends ConsumerState<_LogEntryCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final entry = widget.entry;
+    final color = _levelColor(entry.level);
+
     final time = DateFormat('HH:mm:ss.SSS').format(
       DateTime.fromMillisecondsSinceEpoch(entry.timestamp),
     );
@@ -302,76 +528,113 @@ class _LogEntryTile extends ConsumerWidget {
     final device =
         devices.where((d) => d.deviceId == entry.deviceId).firstOrNull;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? ColorTokens.primary.withValues(alpha: 0.08)
-                : null,
-            border: Border(
-              bottom: BorderSide(
-                color: theme.dividerColor.withValues(alpha: 0.3),
-                width: 0.5,
-              ),
-              left: isSelected
-                  ? const BorderSide(color: ColorTokens.primary, width: 2)
-                  : BorderSide.none,
+    final cardBg = widget.isSelected
+        ? ColorTokens.primary.withValues(alpha: 0.08)
+        : _hovered
+            ? (isDark
+                ? Colors.white.withValues(alpha: 0.03)
+                : Colors.black.withValues(alpha: 0.02))
+            : Colors.transparent;
+
+    final borderColor = widget.isSelected
+        ? ColorTokens.primary.withValues(alpha: 0.25)
+        : _hovered
+            ? (isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.06))
+            : (isDark
+                ? Colors.white.withValues(alpha: 0.04)
+                : Colors.black.withValues(alpha: 0.04));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: borderColor, width: 1),
             ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                time,
-                style: TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: 11,
-                  color: Colors.grey[500],
-                ),
-              ),
-              const SizedBox(width: 6),
-              // Platform tag
-              if (device != null)
-                PlatformBadge(platform: device.platform),
-              if (device != null) const SizedBox(width: 6),
-              LogLevelBadge(level: entry.level.name),
-              const SizedBox(width: 8),
-              if (entry.tag != null) ...[
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: Text(
-                    entry.tag!,
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      color: Colors.grey[500],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Left color bar
+                    Container(
+                      width: 3,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(8),
+                          bottomLeft: Radius.circular(8),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: Text(
-                  entry.message,
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 12,
-                    color: isDark ? const Color(0xFFE6EDF3) : const Color(0xFF1F2328),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                    // Content
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Top row: badges and timestamp
+                            Row(
+                              children: [
+                                Text(
+                                  time,
+                                  style: TextStyle(
+                                    fontFamily: 'JetBrains Mono',
+                                    fontSize: 10,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                if (device != null) ...[
+                                  PlatformBadge(
+                                      platform: device.platform),
+                                  const SizedBox(width: 6),
+                                ],
+                                LogLevelBadge(level: entry.level.name),
+                                if (entry.tag != null) ...[
+                                  const SizedBox(width: 6),
+                                  _TagBadge(tag: entry.tag!),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            // Message
+                            Text(
+                              entry.message,
+                              style: TextStyle(
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 12,
+                                height: 1.4,
+                                color: isDark
+                                    ? const Color(0xFFE6EDF3)
+                                    : const Color(0xFF1F2328),
+                              ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -379,92 +642,283 @@ class _LogEntryTile extends ConsumerWidget {
   }
 }
 
-class _LogDetailPanel extends StatelessWidget {
-  final LogEntry entry;
+// ---------------------------------------------------------------------------
+// Tag badge
+// ---------------------------------------------------------------------------
 
-  const _LogDetailPanel({required this.entry});
+class _TagBadge extends StatelessWidget {
+  final String tag;
+
+  const _TagBadge({required this.tag});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.black.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.08),
+          width: 0.5,
+        ),
+      ),
+      child: Text(
+        tag,
+        style: TextStyle(
+          fontFamily: 'JetBrains Mono',
+          fontSize: 10,
+          color: isDark ? Colors.grey[400] : Colors.grey[600],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Log detail panel
+// ---------------------------------------------------------------------------
+
+class _LogDetailPanel extends StatelessWidget {
+  final LogEntry entry;
+  final VoidCallback onClose;
+
+  const _LogDetailPanel({
+    required this.entry,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final color = _levelColor(entry.level);
     final time = DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
       DateTime.fromMillisecondsSinceEpoch(entry.timestamp),
     );
 
     return Container(
       color: isDark ? const Color(0xFF0D1117) : const Color(0xFFF6F8FA),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Column(
+        children: [
+          // Header bar
+          Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF161B22) : Colors.white,
+              border: Border(
+                bottom: BorderSide(
+                  color: theme.dividerColor.withValues(alpha: 0.5),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Row(
               children: [
                 LogLevelBadge(level: entry.level.name),
-                const SizedBox(width: 8),
-                Text(time, style: theme.textTheme.bodySmall),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.copy, size: 14),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: entry.message));
-                  },
-                  tooltip: 'Copy message',
-                  splashRadius: 14,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    time,
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 11,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ),
+                // Copy button
+                Tooltip(
+                  message: 'Copy message',
+                  child: GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(
+                          ClipboardData(text: entry.message));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Copied to clipboard'),
+                          duration: Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                          width: 180,
+                        ),
+                      );
+                    },
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(
+                          LucideIcons.copy,
+                          size: 14,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // Close button
+                Tooltip(
+                  message: 'Close panel',
+                  child: GestureDetector(
+                    onTap: onClose,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(
+                          LucideIcons.x,
+                          size: 16,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            if (entry.tag != null) ...[
-              Text('Tag', style: theme.textTheme.titleSmall),
-              const SizedBox(height: 4),
-              Text(entry.tag!, style: theme.textTheme.labelLarge),
-              const SizedBox(height: 12),
-            ],
-            Text('Message', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
-            SelectableText(
-              entry.message,
-              style: TextStyle(
-                fontFamily: 'JetBrains Mono',
-                fontSize: 13,
-                color: isDark ? Colors.white : Colors.black87,
-                height: 1.5,
+          ),
+          // Scrollable content
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Tag
+                  if (entry.tag != null) ...[
+                    _SectionLabel(label: 'Tag'),
+                    const SizedBox(height: 6),
+                    _TagBadge(tag: entry.tag!),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Message
+                  _SectionLabel(label: 'Message'),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF161B22)
+                          : const Color(0xFFF0F0F0),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.06)
+                            : Colors.black.withValues(alpha: 0.06),
+                        width: 1,
+                      ),
+                    ),
+                    child: SelectableText(
+                      entry.message,
+                      style: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 12,
+                        color: isDark
+                            ? const Color(0xFFE6EDF3)
+                            : const Color(0xFF1F2328),
+                        height: 1.6,
+                      ),
+                    ),
+                  ),
+
+                  // Metadata
+                  if (entry.metadata != null &&
+                      entry.metadata!.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _SectionLabel(label: 'Metadata'),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF161B22)
+                            : const Color(0xFFF0F0F0),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.06)
+                              : Colors.black.withValues(alpha: 0.06),
+                          width: 1,
+                        ),
+                      ),
+                      child: JsonViewer(data: entry.metadata),
+                    ),
+                  ],
+
+                  // Stack trace
+                  if (entry.stackTrace != null) ...[
+                    const SizedBox(height: 20),
+                    _SectionLabel(label: 'Stack Trace'),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: color.withValues(alpha: 0.15),
+                          width: 1,
+                        ),
+                      ),
+                      child: SelectableText(
+                        entry.stackTrace!,
+                        style: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 11,
+                          color: color.withValues(alpha: 0.9),
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            if (entry.metadata != null && entry.metadata!.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text('Metadata', style: theme.textTheme.titleSmall),
-              const SizedBox(height: 4),
-              JsonViewer(data: entry.metadata),
-            ],
-            if (entry.stackTrace != null) ...[
-              const SizedBox(height: 16),
-              Text('Stack Trace', style: theme.textTheme.titleSmall),
-              const SizedBox(height: 4),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF161B22)
-                      : const Color(0xFFF0F0F0),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  entry.stackTrace!,
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 11,
-                    color: ColorTokens.logError.withValues(alpha: 0.9),
-                    height: 1.5,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Section label used in the detail panel
+// ---------------------------------------------------------------------------
+
+class _SectionLabel extends StatelessWidget {
+  final String label;
+
+  const _SectionLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+        color: Colors.grey[500],
       ),
     );
   }

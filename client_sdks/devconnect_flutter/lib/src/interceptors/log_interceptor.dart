@@ -182,7 +182,7 @@ class DevConnectLogInterceptor {
         }
       }
 
-      DevConnectClient.instance.sendLog(
+      DevConnectClient.safeSendLog(
         level: level,
         message: message,
         tag: tag,

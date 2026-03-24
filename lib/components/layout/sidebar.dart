@@ -50,6 +50,11 @@ final sidebarItems = [
     routePath: '/database',
   ),
   const SidebarItem(
+    label: 'History',
+    icon: LucideIcons.history,
+    routePath: '/history',
+  ),
+  const SidebarItem(
     label: 'Settings',
     icon: LucideIcons.settings,
     routePath: '/settings',
@@ -85,7 +90,7 @@ class Sidebar extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          const SizedBox(height: 12),
+          const SizedBox(height: 38),
           // Logo
           Container(
             width: 40,
@@ -97,16 +102,18 @@ class Sidebar extends ConsumerWidget {
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Center(
-              child: Text(
-                'DC',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
+              boxShadow: [
+                BoxShadow(
+                  color: ColorTokens.primary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
+              ],
+            ),
+            child: Center(
+              child: CustomPaint(
+                size: const Size(22, 22),
+                painter: _ConnectionHubPainter(),
               ),
             ),
           ),
@@ -135,33 +142,49 @@ class Sidebar extends ConsumerWidget {
           ),
           const Divider(height: 1, indent: 12, endIndent: 12),
           const SizedBox(height: 4),
-          // "All devices" button
-          if (devices.length > 1)
-            _DeviceButton(
-              label: 'All',
-              icon: LucideIcons.layers,
-              color: ColorTokens.primary,
-              isSelected: ref.watch(selectedDeviceProvider) == null,
-              onTap: () => ref.read(selectedDeviceProvider.notifier).select(null),
-            ),
-          // Connected devices list - clickable to select
+          // Connected devices list (scrollable)
           if (devices.isNotEmpty)
-            ...devices.map((d) {
-              final isActive = ref.watch(selectedDeviceProvider) == d.deviceId;
-              return _DeviceButton(
-                label: _platformLabel(d.platform),
-                subtitle: d.appName,
-                icon: _platformIcon(d.platform),
-                color: _platformColor(d.platform),
-                isSelected: isActive,
-                tooltip: '${d.appName}\n${d.deviceName}\n${d.osVersion}\n\nTap to select',
-                onTap: () {
-                  ref.read(selectedDeviceProvider.notifier).select(
-                    isActive ? null : d.deviceId,
-                  );
-                },
-              );
-            }),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // "All devices" button
+                    if (devices.length > 1)
+                      _DeviceButton(
+                        label: 'All',
+                        subtitle: '${devices.length} devices',
+                        icon: LucideIcons.layers,
+                        color: ColorTokens.primary,
+                        isSelected: ref.watch(selectedDeviceProvider) == null,
+                        onTap: () => ref
+                            .read(selectedDeviceProvider.notifier)
+                            .select(null),
+                      ),
+                    // Individual devices
+                    ...devices.map((d) {
+                      final isActive =
+                          ref.watch(selectedDeviceProvider) == d.deviceId;
+                      return _DeviceButton(
+                        label: _platformLabel(d.platform),
+                        subtitle: d.appName,
+                        icon: _platformIcon(d.platform),
+                        color: _platformColor(d.platform),
+                        isSelected: isActive,
+                        tooltip:
+                            '${d.appName}\n${d.deviceName}\n${d.osVersion}\n\nTap to select',
+                        onTap: () {
+                          ref.read(selectedDeviceProvider.notifier).select(
+                                isActive ? null : d.deviceId,
+                              );
+                        },
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 4),
           // Theme toggle
           Padding(
@@ -455,4 +478,49 @@ class _ConnectionBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ConnectionHubPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final hubR = size.width * 0.22;
+    final nodeR = size.width * 0.1;
+    final nodeDist = size.width * 0.4;
+
+    final linePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.85)
+      ..strokeWidth = size.width * 0.06
+      ..strokeCap = StrokeCap.round;
+
+    final nodePaint = Paint()..color = Colors.white;
+    final hubPaint = Paint()..color = Colors.white;
+    final innerPaint = Paint()..color = const Color(0xFF14A096);
+
+    // 3 connection lines
+    const angles = [-0.5236, 1.5708, 3.6652]; // -30°, 90°, 210° in radians
+    for (final a in angles) {
+      final nx = cx + nodeDist * _cos(a);
+      final ny = cy + nodeDist * _sin(a);
+      canvas.drawLine(Offset(cx, cy), Offset(nx, ny), linePaint);
+    }
+
+    // Outer nodes
+    for (final a in angles) {
+      final nx = cx + nodeDist * _cos(a);
+      final ny = cy + nodeDist * _sin(a);
+      canvas.drawCircle(Offset(nx, ny), nodeR, nodePaint);
+    }
+
+    // Center hub
+    canvas.drawCircle(Offset(cx, cy), hubR, hubPaint);
+    canvas.drawCircle(Offset(cx, cy), hubR * 0.5, innerPaint);
+  }
+
+  double _cos(double rad) => rad == 1.5708 ? 0.0 : (rad == -0.5236 ? 0.866 : -0.866);
+  double _sin(double rad) => rad == 1.5708 ? 1.0 : (rad == -0.5236 ? -0.5 : -0.5);
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

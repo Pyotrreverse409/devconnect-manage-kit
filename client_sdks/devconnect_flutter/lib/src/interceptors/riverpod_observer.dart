@@ -45,7 +45,7 @@ class DevConnectRiverpodHelper {
     Object? newValue,
   }) {
     try {
-      DevConnectClient.instance.reportStateChange(
+      DevConnectClient.safeReportStateChange(
         stateManager: 'riverpod',
         action: '$providerName updated',
         previousState: _toMap(previousValue),

@@ -36,7 +36,7 @@ class DevConnectDriftReporter {
     String? error,
   }) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'drift',
         key: _extractTableName(sql),
         value: {
@@ -58,7 +58,7 @@ class DevConnectDriftReporter {
     String? error,
   }) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'drift',
         key: 'transaction',
         value: {
@@ -78,7 +78,7 @@ class DevConnectDriftReporter {
     String? error,
   }) {
     try {
-      DevConnectClient.instance.reportStorageOperation(
+      DevConnectClient.safeReportStorageOperation(
         storageType: 'drift',
         key: 'batch',
         value: {

@@ -56,7 +56,7 @@ class DevConnectLoggyPrinter {
       }
 
       // Send to DevConnect
-      DevConnectClient.instance.sendLog(
+      DevConnectClient.safeSendLog(
         level: dcLevel,
         message: message,
         tag: loggerName,

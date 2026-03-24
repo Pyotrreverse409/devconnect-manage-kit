@@ -47,7 +47,7 @@ class DevConnectNavigationObserver extends NavigatorObserver {
       final currentName = currentRoute?.settings.name ?? 'unknown';
       final previousName = previousRoute?.settings.name;
 
-      DevConnectClient.instance.log(
+      DevConnectClient.safeLog(
         '$action: $currentName${previousName != null ? ' (from: $previousName)' : ''}',
         tag: 'Navigation',
         metadata: {
