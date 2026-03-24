@@ -160,7 +160,14 @@ class DevConnectObserver extends ProviderObserver {
     );
   }
 }
-ProviderScope(observers: [DevConnectObserver()], child: MyApp())
+
+// main.dart
+runApp(
+  ProviderScope(
+    observers: [DevConnectObserver()],
+    child: const MyApp(),
+  ),
+);
 ```
 
 ```dart
@@ -177,7 +184,57 @@ class DevConnectBlocObserver extends BlocObserver {
     );
   }
 }
+
+// main.dart
 Bloc.observer = DevConnectBlocObserver();
+```
+
+```dart
+// Provider / ChangeNotifier
+class MyModel extends ChangeNotifier {
+  String _name = '';
+  set name(String val) {
+    final prev = _name;
+    _name = val;
+    notifyListeners();
+    DevConnect.reportStateChange(
+      stateManager: 'provider',
+      action: 'name changed',
+      previousState: {'name': prev},
+      nextState: {'name': val},
+    );
+  }
+}
+```
+
+```dart
+// GetX
+class MyController extends GetxController {
+  final count = 0.obs;
+
+  void increment() {
+    final prev = count.value;
+    count.value++;
+    DevConnect.reportStateChange(
+      stateManager: 'getx',
+      action: 'increment',
+      previousState: {'count': prev},
+      nextState: {'count': count.value},
+    );
+  }
+}
+```
+
+```dart
+// MobX
+final counter = Observable(0);
+autorun((_) {
+  DevConnect.reportStateChange(
+    stateManager: 'mobx',
+    action: 'counter changed',
+    nextState: {'counter': counter.value},
+  );
+});
 ```
 
 ```dart
@@ -341,38 +398,110 @@ const wrapped = wrapLogger(myLogger, 'myLoggerName');
 ### State
 
 ```typescript
-// Redux / Redux Toolkit
+// Redux - Classic createStore
+import { createStore, applyMiddleware, compose } from 'redux';
 import { devConnectReduxMiddleware } from 'devconnect-react-native';
+import { DevConnect } from 'devconnect-react-native';
+
+let store;
+if (__DEV__) {
+  store = createStore(
+    rootReducer,
+    compose(applyMiddleware(thunkMiddleware, devConnectReduxMiddleware))
+  );
+  // Allow desktop to dispatch actions into the app
+  DevConnect.connectReduxStore(store);
+} else {
+  store = createStore(rootReducer, applyMiddleware(thunkMiddleware));
+}
+```
+
+```typescript
+// Redux Toolkit
+import { configureStore } from '@reduxjs/toolkit';
+import { devConnectReduxMiddleware } from 'devconnect-react-native';
+import { DevConnect } from 'devconnect-react-native';
+
 const store = configureStore({
   reducer: rootReducer,
-  middleware: (getDefault) => getDefault().concat(devConnectReduxMiddleware),
+  middleware: (getDefault) =>
+    __DEV__
+      ? getDefault().concat(devConnectReduxMiddleware)
+      : getDefault(),
 });
 
-// Dispatch from desktop
-DevConnect.connectReduxStore(store);
+if (__DEV__) DevConnect.connectReduxStore(store);
+```
 
+```typescript
 // MobX
+import { spy } from 'mobx';
 import { setupMobxSpy } from 'devconnect-react-native';
-setupMobxSpy(spy);
 
+if (__DEV__) {
+  setupMobxSpy(spy); // reports all observable changes
+}
+```
+
+```typescript
 // Zustand
+import { create } from 'zustand';
 import { devConnectMiddleware } from 'devconnect-react-native';
-const useStore = create(devConnectMiddleware((set) => ({
-  count: 0,
-  increment: () => set((s) => ({ count: s.count + 1 })),
-}), 'MyStore'));
 
+// Wrap your store creator with devConnectMiddleware
+const useStore = create(
+  devConnectMiddleware(
+    (set) => ({
+      count: 0,
+      name: '',
+      increment: () => set((s) => ({ count: s.count + 1 })),
+      setName: (name: string) => set({ name }),
+    }),
+    'CounterStore' // label shown in DevConnect desktop
+  )
+);
+```
+
+```typescript
 // Jotai
-import { devConnectAtomEffect } from 'devconnect-react-native';
+import { atom, createStore } from 'jotai';
+import { watchAtom } from 'devconnect-react-native';
 
+const countAtom = atom(0);
+const store = createStore();
+
+if (__DEV__) {
+  // Watches atom and reports every value change
+  const unsub = watchAtom(store, countAtom, 'countAtom');
+  // unsub() to stop watching
+}
+```
+
+```typescript
 // Valtio
+import { proxy } from 'valtio';
 import { watchValtio } from 'devconnect-react-native';
-const state = proxy({ count: 0 });
-watchValtio(state, 'MyState');
 
+const state = proxy({ count: 0, user: { name: '' } });
+
+if (__DEV__) {
+  watchValtio(state, 'AppState'); // reports all proxy mutations
+}
+```
+
+```typescript
 // XState
+import { interpret } from 'xstate';
 import { devConnectXStateInspector } from 'devconnect-react-native';
-const service = interpret(machine).onTransition(devConnectXStateInspector('MyMachine'));
+
+const service = interpret(toggleMachine);
+
+if (__DEV__) {
+  // Reports every state transition (event, from, to, context)
+  service.onTransition(devConnectXStateInspector('ToggleMachine'));
+}
+
+service.start();
 ```
 
 ### Storage
@@ -504,42 +633,84 @@ val stack = object : HurlStack() {
 
 ```kotlin
 // Drop-in replacement for android.util.Log
+// Change: import android.util.Log -> import com.devconnect.interceptors.DCLog as Log
+// All existing Log.d/i/w/e calls will send to both Logcat AND DevConnect
 import com.devconnect.interceptors.DCLog as Log
-Log.d("MyTag", "Hello")
+
+Log.d("MyTag", "Hello")       // -> Logcat + DevConnect
 Log.e("MyTag", "Error", exception)
+Log.w("MyTag", "Warning")
+```
 
-// Timber
-Timber.plant(DevConnectTree())
+```kotlin
+// Timber - add DevConnect tree alongside DebugTree
+import com.devconnect.interceptors.DevConnectTimberHelper
 
-// Intercept println()
+class DevConnectTree : Timber.Tree() {
+    override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+        DevConnectTimberHelper.log(priority, tag, message, t)
+    }
+}
+
+// Application.onCreate()
+Timber.plant(Timber.DebugTree())    // keep normal logcat
+Timber.plant(DevConnectTree())       // add DevConnect reporting
+```
+
+```kotlin
+// Intercept all println() calls
 DevConnectLogInterceptor.interceptSystemOut()
+```
 
-// Kermit (KMP)
+```kotlin
+// Kermit (KMP) - add DevConnect log writer
+import co.touchlab.kermit.Logger
 Logger.addLogWriter(DevConnect.kermitWriter())
+```
 
-// Napier (KMP)
+```kotlin
+// Napier (KMP) - set DevConnect as antilog
+import io.github.aakira.napier.Napier
 Napier.base(DevConnect.napierAntilog())
+```
 
-// Manual
+```kotlin
+// Manual logging
 DevConnect.sendLog("info", "User logged in", tag = "Auth")
+DevConnect.sendLog("error", "Payment failed", tag = "Payment", stackTrace = e.stackTraceToString())
 ```
 
 ### State
 
 ```kotlin
-// ViewModel (manual)
-DevConnectViewModelObserver.reportStateUpdate(
-    viewModelName = "MyViewModel",
-    action = "updateName",
-    previousState = mapOf("name" to prev),
-    nextState = mapOf("name" to next),
-)
+// ViewModel + StateFlow
+class MyViewModel : ViewModel() {
+    private val _state = MutableStateFlow(UserState())
+    val state = _state.asStateFlow()
 
-// StateFlow (auto-observe)
-DevConnect.stateObserver().observe(scope, stateFlow, "UserState")
+    fun updateName(name: String) {
+        val prev = _state.value
+        _state.value = prev.copy(name = name)
+        DevConnectViewModelObserver.reportStateUpdate(
+            viewModelName = "MyViewModel",
+            action = "updateName",
+            previousState = mapOf("name" to prev.name),
+            nextState = mapOf("name" to name),
+        )
+    }
+}
+```
 
-// LiveData (auto-observe)
-DevConnect.stateObserver().observe(lifecycleOwner, liveData, "UserState")
+```kotlin
+// Auto-observe StateFlow (reports every change automatically)
+val observer = DevConnect.stateObserver()
+observer.observe(viewLifecycleOwner.lifecycleScope, viewModel.state, "UserState")
+```
+
+```kotlin
+// Auto-observe LiveData
+val observer = DevConnect.stateObserver()
+observer.observe(viewLifecycleOwner, viewModel.userLiveData, "UserLiveData")
 ```
 
 ### Storage
