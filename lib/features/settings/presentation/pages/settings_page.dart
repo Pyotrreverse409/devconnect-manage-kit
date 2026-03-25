@@ -958,13 +958,14 @@ class _UsbToolsSection extends StatelessWidget {
                   if (adbPath == null) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
+                        SnackBar(
                           content: Text(
-                            'adb not found. Install Android SDK or set ANDROID_HOME.',
+                            'adb not found.\nHOME=${Platform.environment['HOME'] ?? 'null'}\nChecked: ~/Library/Android/sdk/platform-tools/adb',
                           ),
                           backgroundColor: ColorTokens.error,
                           behavior: SnackBarBehavior.floating,
-                          width: 400,
+                          width: 500,
+                          duration: const Duration(seconds: 5),
                         ),
                       );
                     }
@@ -979,15 +980,15 @@ class _UsbToolsSection extends StatelessWidget {
                       SnackBar(
                         content: Text(
                           result.exitCode == 0
-                              ? 'adb reverse OK'
+                              ? 'adb reverse OK ($adbPath)'
                               : 'adb error: ${result.stderr}',
                         ),
                         backgroundColor: result.exitCode == 0
                             ? ColorTokens.success
                             : ColorTokens.error,
-                        duration: const Duration(seconds: 2),
+                        duration: const Duration(seconds: 3),
                         behavior: SnackBarBehavior.floating,
-                        width: 280,
+                        width: 400,
                       ),
                     );
                   }
@@ -995,8 +996,9 @@ class _UsbToolsSection extends StatelessWidget {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('adb error: $e'),
+                        content: Text('adb exception: $e'),
                         backgroundColor: ColorTokens.error,
+                        duration: const Duration(seconds: 5),
                       ),
                     );
                   }
