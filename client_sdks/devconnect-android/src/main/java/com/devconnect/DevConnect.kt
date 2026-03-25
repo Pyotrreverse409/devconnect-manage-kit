@@ -757,6 +757,89 @@ object DevConnect {
         })
     }
 
+    // ---- Custom Display ----
+
+    /**
+     * Send a custom display value to DevConnect desktop.
+     *
+     * ```kotlin
+     * DevConnect.display("User Profile",
+     *     value = mapOf("name" to "John", "age" to 30),
+     *     preview = "John, 30"
+     * )
+     * ```
+     */
+    fun display(
+        name: String,
+        value: Any? = null,
+        preview: String? = null,
+        image: String? = null,
+        metadata: Map<String, Any>? = null
+    ) {
+        send("client:display", buildPayload {
+            put("name", name)
+            value?.let { put("value", it) }
+            preview?.let { put("preview", it) }
+            image?.let { put("image", it) }
+            metadata?.let { put("metadata", JSONObject(it)) }
+        })
+    }
+
+    // ---- Async Operations (Saga/Task tracking) ----
+
+    /**
+     * Report an async operation (saga step, background task, etc.).
+     *
+     * ```kotlin
+     * // Report saga call start
+     * DevConnect.reportAsyncOperation(
+     *     operationType = "saga_call",
+     *     description = "Fetching user data",
+     *     status = "start",
+     *     sagaName = "userSaga"
+     * )
+     *
+     * // Report completion
+     * DevConnect.reportAsyncOperation(
+     *     operationType = "saga_call",
+     *     description = "Fetching user data",
+     *     status = "resolve",
+     *     sagaName = "userSaga",
+     *     duration = 350
+     * )
+     * ```
+     *
+     * @param operationType One of: saga_take, saga_put, saga_call, saga_fork, saga_all, saga_race, saga_select, saga_delay, async_task, background_job, custom
+     * @param description Human-readable description
+     * @param status One of: start, resolve, reject
+     * @param duration Duration in milliseconds (for resolve/reject)
+     * @param sagaName Optional saga name for grouping
+     * @param error Error message (for reject)
+     * @param result Operation result (for resolve)
+     * @param metadata Optional additional key-value data
+     */
+    fun reportAsyncOperation(
+        operationType: String,
+        description: String,
+        status: String,
+        duration: Long? = null,
+        sagaName: String? = null,
+        error: String? = null,
+        result: Any? = null,
+        metadata: Map<String, Any>? = null
+    ) {
+        send("client:async:operation", buildPayload {
+            put("operationType", operationType)
+            put("description", description)
+            put("status", status)
+            duration?.let { put("duration", it) }
+            sagaName?.let { put("sagaName", it) }
+            error?.let { put("error", it) }
+            result?.let { put("result", it) }
+            metadata?.let { put("metadata", JSONObject(it)) }
+        })
+    }
+
     // ---- Custom commands ----
 
     private val commandHandlers = mutableMapOf<String, (Map<String, Any>?) -> Any?>()

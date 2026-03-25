@@ -1,13 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/tab_visibility_provider.dart';
+import '../../../models/display/display_entry.dart';
 import '../../../server/providers/server_providers.dart';
 import '../../console/provider/console_providers.dart';
+import '../../display/provider/display_providers.dart';
 import '../../network_inspector/provider/network_providers.dart';
 import '../../state_inspector/provider/state_providers.dart';
 import '../../storage_viewer/provider/storage_providers.dart';
 
-enum EventType { log, network, state, storage }
+enum EventType { log, network, state, storage, display, asyncOp }
 
 class UnifiedEvent {
   final EventType type;
@@ -124,6 +126,37 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
         rawData: st,
       ));
     }
+  }
+
+  // Display entries
+  final display = ref.watch(displayEntriesProvider);
+  for (final d in display) {
+    events.add(UnifiedEvent(
+      type: EventType.display,
+      id: d.id,
+      deviceId: d.deviceId,
+      timestamp: d.timestamp,
+      title: d.name,
+      subtitle: d.preview ?? 'custom display',
+      level: 'info',
+      rawData: d,
+    ));
+  }
+
+  // Async operation entries
+  final asyncOps = ref.watch(asyncOperationEntriesProvider);
+  for (final op in asyncOps) {
+    events.add(UnifiedEvent(
+      type: EventType.asyncOp,
+      id: op.id,
+      deviceId: op.deviceId,
+      timestamp: op.timestamp,
+      title: op.description,
+      subtitle:
+          '${op.operationType.name} - ${op.status.name}${op.duration != null ? ' (${op.duration}ms)' : ''}',
+      level: op.status == AsyncOperationStatus.reject ? 'error' : 'info',
+      rawData: op,
+    ));
   }
 
   events.sort((a, b) => a.timestamp.compareTo(b.timestamp));

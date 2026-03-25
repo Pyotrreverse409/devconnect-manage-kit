@@ -528,6 +528,48 @@ class DevConnect {
     );
   }
 
+  // ---- Custom Display ----
+
+  /// Send a custom display value to DevConnect desktop.
+  static void display(
+    String name, {
+    dynamic value,
+    String? preview,
+    String? image,
+    Map<String, dynamic>? metadata,
+  }) {
+    client.display(name,
+        value: value,
+        preview: preview,
+        image: image,
+        metadata: metadata);
+  }
+
+  // ---- Async Operations ----
+
+  /// Report an async operation (saga step, background task, etc.).
+  static void reportAsyncOperation({
+    required String operationType,
+    required String description,
+    required String status,
+    int? duration,
+    String? sagaName,
+    String? error,
+    dynamic result,
+    Map<String, dynamic>? metadata,
+  }) {
+    client.reportAsyncOperation(
+      operationType: operationType,
+      description: description,
+      status: status,
+      duration: duration,
+      sagaName: sagaName,
+      error: error,
+      result: result,
+      metadata: metadata,
+    );
+  }
+
   // ---- Loggy ----
 
   /// Returns a LoggyPrinter-compatible printer that sends logs to DevConnect.

@@ -5,6 +5,7 @@ import '../models/device_info.dart';
 import '../models/log/log_entry.dart';
 import '../models/network/network_entry.dart';
 import '../models/state/state_change.dart';
+import '../models/display/display_entry.dart';
 import '../models/performance/performance_entry.dart';
 import '../models/storage/storage_entry.dart';
 import 'protocol/dc_message.dart';
@@ -24,6 +25,8 @@ class WsMessageHandler {
   final _customResultController = StreamController<Map<String, dynamic>>.broadcast();
   final _performanceController = StreamController<PerformanceEntry>.broadcast();
   final _memoryLeakController = StreamController<MemoryLeakEntry>.broadcast();
+  final _displayController = StreamController<DisplayEntry>.broadcast();
+  final _asyncOpController = StreamController<AsyncOperationEntry>.broadcast();
 
   Stream<LogEntry> get onLog => _logController.stream;
   Stream<NetworkEntry> get onNetwork => _networkController.stream;
@@ -36,6 +39,8 @@ class WsMessageHandler {
   Stream<Map<String, dynamic>> get onCustomResult => _customResultController.stream;
   Stream<PerformanceEntry> get onPerformance => _performanceController.stream;
   Stream<MemoryLeakEntry> get onMemoryLeak => _memoryLeakController.stream;
+  Stream<DisplayEntry> get onDisplay => _displayController.stream;
+  Stream<AsyncOperationEntry> get onAsyncOperation => _asyncOpController.stream;
 
   late final StreamSubscription<DCMessage> _messageSub;
   late final StreamSubscription<DeviceInfo> _connectionSub;
@@ -80,6 +85,12 @@ class WsMessageHandler {
         break;
       case WsMessageTypes.clientMemoryLeak:
         _handleMemoryLeak(message);
+        break;
+      case WsMessageTypes.clientDisplay:
+        _handleDisplay(message);
+        break;
+      case WsMessageTypes.clientAsyncOperation:
+        _handleAsyncOperation(message);
         break;
       case WsMessageTypes.clientCustom:
       case WsMessageTypes.clientCustomCommandResult:
@@ -287,6 +298,63 @@ class WsMessageHandler {
     }
   }
 
+  void _handleDisplay(DCMessage message) {
+    final p = message.payload;
+    final entry = DisplayEntry(
+      id: message.id,
+      deviceId: message.deviceId,
+      name: p['name'] as String? ?? 'Display',
+      timestamp: message.timestamp,
+      value: p['value'],
+      preview: p['preview'] as String?,
+      image: p['image'] as String?,
+      metadata: p['metadata'] as Map<String, dynamic>?,
+    );
+    _displayController.add(entry);
+  }
+
+  void _handleAsyncOperation(DCMessage message) {
+    final p = message.payload;
+    final entry = AsyncOperationEntry(
+      id: message.id,
+      deviceId: message.deviceId,
+      operationType: _parseAsyncOpType(p['operationType'] as String? ?? 'custom'),
+      description: p['description'] as String? ?? '',
+      status: _parseAsyncOpStatus(p['status'] as String? ?? 'start'),
+      timestamp: message.timestamp,
+      duration: p['duration'] as int?,
+      sagaName: p['sagaName'] as String?,
+      error: p['error'] as String?,
+      result: p['result'],
+      metadata: p['metadata'] as Map<String, dynamic>?,
+    );
+    _asyncOpController.add(entry);
+  }
+
+  AsyncOperationType _parseAsyncOpType(String type) {
+    switch (type) {
+      case 'saga_take': return AsyncOperationType.sagaTake;
+      case 'saga_put': return AsyncOperationType.sagaPut;
+      case 'saga_call': return AsyncOperationType.sagaCall;
+      case 'saga_fork': return AsyncOperationType.sagaFork;
+      case 'saga_all': return AsyncOperationType.sagaAll;
+      case 'saga_race': return AsyncOperationType.sagaRace;
+      case 'saga_select': return AsyncOperationType.sagaSelect;
+      case 'saga_delay': return AsyncOperationType.sagaDelay;
+      case 'async_task': return AsyncOperationType.asyncTask;
+      case 'background_job': return AsyncOperationType.backgroundJob;
+      default: return AsyncOperationType.custom;
+    }
+  }
+
+  AsyncOperationStatus _parseAsyncOpStatus(String status) {
+    switch (status) {
+      case 'resolve': return AsyncOperationStatus.resolve;
+      case 'reject': return AsyncOperationStatus.reject;
+      default: return AsyncOperationStatus.start;
+    }
+  }
+
   MemoryLeakSeverity _parseLeakSeverity(String severity) {
     switch (severity) {
       case 'info': return MemoryLeakSeverity.info;
@@ -317,5 +385,7 @@ class WsMessageHandler {
     _customResultController.close();
     _performanceController.close();
     _memoryLeakController.close();
+    _displayController.close();
+    _asyncOpController.close();
   }
 }

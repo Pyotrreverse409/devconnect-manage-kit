@@ -35,4 +35,6 @@ class WsMessageTypes {
   static const String clientPerformanceMetric =
       'client:performance:metric';
   static const String clientMemoryLeak = 'client:memory:leak';
+  static const String clientDisplay = 'client:display';
+  static const String clientAsyncOperation = 'client:async:operation';
 }

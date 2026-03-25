@@ -18,12 +18,14 @@ import '../../../../components/viewers/json_viewer.dart';
 import '../../../../core/providers/tab_visibility_provider.dart';
 import '../../../../core/theme/color_tokens.dart';
 import '../../../../core/theme/theme_provider.dart';
+import '../../../../models/display/display_entry.dart';
 import '../../../../models/log/log_entry.dart';
 import '../../../../models/network/network_entry.dart';
 import '../../../../models/state/state_change.dart';
 import '../../../../models/storage/storage_entry.dart';
 import '../../../../server/providers/server_providers.dart';
 import '../../../console/provider/console_providers.dart';
+import '../../../display/provider/display_providers.dart';
 import '../../../network_inspector/provider/network_providers.dart';
 import '../../../state_inspector/provider/state_providers.dart';
 import '../../../storage_viewer/provider/storage_providers.dart';
@@ -132,6 +134,8 @@ class _AllEventsPageState extends ConsumerState<AllEventsPage> {
     ref.read(networkEntriesProvider.notifier).clear();
     ref.read(stateChangesProvider.notifier).clear();
     ref.read(storageEntriesProvider.notifier).clear();
+    ref.read(displayEntriesProvider.notifier).clear();
+    ref.read(asyncOperationEntriesProvider.notifier).clear();
     setState(() {
       _selectedEvent = null;
       _maxVisible = _pageSize;
@@ -493,6 +497,8 @@ class _FilterBar extends ConsumerWidget {
     final netCount = events.where((e) => e.type == EventType.network).length;
     final stateCount = events.where((e) => e.type == EventType.state).length;
     final storeCount = events.where((e) => e.type == EventType.storage).length;
+    final displayCount = events.where((e) => e.type == EventType.display).length;
+    final asyncCount = events.where((e) => e.type == EventType.asyncOp).length;
     final errorCount = events.where((e) => e.level == 'error').length;
 
     // Only show filter chips for enabled tabs
@@ -538,6 +544,30 @@ class _FilterBar extends ConsumerWidget {
         color: ColorTokens.warning,
         isActive: activeFilters.contains(EventType.storage),
         onTap: () => _toggle(ref, EventType.storage),
+      ));
+    }
+    // Display events (always visible — no dedicated tab)
+    if (displayCount > 0 || activeFilters.contains(EventType.display)) {
+      if (chips.isNotEmpty) chips.add(const SizedBox(width: 8));
+      chips.add(_FilterChip(
+        label: 'DISPLAY',
+        count: displayCount,
+        icon: LucideIcons.monitor,
+        color: const Color(0xFF9B59B6),
+        isActive: activeFilters.contains(EventType.display),
+        onTap: () => _toggle(ref, EventType.display),
+      ));
+    }
+    // Async operation events (always visible — no dedicated tab)
+    if (asyncCount > 0 || activeFilters.contains(EventType.asyncOp)) {
+      if (chips.isNotEmpty) chips.add(const SizedBox(width: 8));
+      chips.add(_FilterChip(
+        label: 'ASYNC',
+        count: asyncCount,
+        icon: LucideIcons.zap,
+        color: const Color(0xFFE67E22),
+        isActive: activeFilters.contains(EventType.asyncOp),
+        onTap: () => _toggle(ref, EventType.asyncOp),
       ));
     }
 
@@ -606,6 +636,9 @@ class _FilterBar extends ConsumerWidget {
         return TabKey.state;
       case EventType.storage:
         return TabKey.storage;
+      case EventType.display:
+      case EventType.asyncOp:
+        return null; // No dedicated tab
     }
   }
 
@@ -799,6 +832,20 @@ class _EventRow extends StatelessWidget {
           color: ColorTokens.warning,
           icon: LucideIcons.database,
           label: 'STORE',
+        );
+      case EventType.display:
+        return _TypeInfo(
+          color: const Color(0xFF9B59B6),
+          icon: LucideIcons.monitor,
+          label: 'DISPLAY',
+        );
+      case EventType.asyncOp:
+        return _TypeInfo(
+          color: const Color(0xFFE67E22),
+          icon: LucideIcons.zap,
+          label: event.rawData is AsyncOperationEntry
+              ? (event.rawData as AsyncOperationEntry).status.name.toUpperCase()
+              : 'ASYNC',
         );
     }
   }
@@ -1449,6 +1496,16 @@ class _EventDetailPanelState extends State<_EventDetailPanel> {
         typeIcon = LucideIcons.database;
         typeLabel = 'Storage Detail';
         break;
+      case EventType.display:
+        typeColor = const Color(0xFF9B59B6);
+        typeIcon = LucideIcons.monitor;
+        typeLabel = 'Display Detail';
+        break;
+      case EventType.asyncOp:
+        typeColor = const Color(0xFFE67E22);
+        typeIcon = LucideIcons.zap;
+        typeLabel = 'Async Operation';
+        break;
     }
 
     return Container(
@@ -1520,6 +1577,9 @@ class _EventDetailPanelState extends State<_EventDetailPanel> {
           return _storageScreenshot(
               widget.event.rawData as StorageEntry, isDark);
         }
+        return _fallbackScreenshot(widget.event, isDark);
+      case EventType.display:
+      case EventType.asyncOp:
         return _fallbackScreenshot(widget.event, isDark);
     }
   }
@@ -2151,6 +2211,9 @@ class _EventDetailPanelState extends State<_EventDetailPanel> {
           return _StorageDetail(entry: widget.event.rawData as StorageEntry);
         }
         return _FallbackDetail(event: widget.event);
+      case EventType.display:
+      case EventType.asyncOp:
+        return _FallbackDetail(event: widget.event);
     }
   }
 }
@@ -2187,6 +2250,18 @@ class _DetailHeader extends ConsumerWidget {
           ColorTokens.warning,
           LucideIcons.database,
           'Storage Detail'
+        );
+      case EventType.display:
+        return (
+          const Color(0xFF9B59B6),
+          LucideIcons.monitor,
+          'Display Detail'
+        );
+      case EventType.asyncOp:
+        return (
+          const Color(0xFFE67E22),
+          LucideIcons.zap,
+          'Async Operation'
         );
     }
   }

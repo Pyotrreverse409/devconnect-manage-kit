@@ -990,6 +990,95 @@ export class DevConnect {
     }
   }
 
+  // ---- Custom Display ----
+
+  /**
+   * Send a custom display value to DevConnect desktop.
+   *
+   * ```typescript
+   * DevConnect.display('User Profile', {
+   *   value: { name: 'John', age: 30, role: 'admin' },
+   *   preview: 'John, 30',
+   * });
+   *
+   * DevConnect.display('Current Theme', {
+   *   value: themeObject,
+   *   preview: 'Dark Mode',
+   *   metadata: { source: 'ThemeProvider' },
+   * });
+   * ```
+   */
+  static display(name: string, opts?: {
+    value?: any;
+    preview?: string;
+    image?: string;
+    metadata?: Record<string, any>;
+  }): void {
+    DevConnect.safeSend('client:display', {
+      name,
+      ...(opts?.value !== undefined ? { value: opts.value } : {}),
+      ...(opts?.preview ? { preview: opts.preview } : {}),
+      ...(opts?.image ? { image: opts.image } : {}),
+      ...(opts?.metadata ? { metadata: opts.metadata } : {}),
+    });
+  }
+
+  // ---- Async Operations (Saga/Task tracking) ----
+
+  /**
+   * Report an async operation (Redux Saga step, background task, etc.).
+   *
+   * ```typescript
+   * // Report saga take
+   * DevConnect.reportAsyncOperation({
+   *   operationType: 'saga_take',
+   *   description: 'Waiting for FETCH_USER',
+   *   status: 'start',
+   *   sagaName: 'userSaga',
+   * });
+   *
+   * // Report saga call completion
+   * DevConnect.reportAsyncOperation({
+   *   operationType: 'saga_call',
+   *   description: 'fetchUserAPI()',
+   *   status: 'resolve',
+   *   sagaName: 'userSaga',
+   *   duration: 350,
+   *   result: { userId: 123 },
+   * });
+   *
+   * // Report async task failure
+   * DevConnect.reportAsyncOperation({
+   *   operationType: 'async_task',
+   *   description: 'Upload image',
+   *   status: 'reject',
+   *   duration: 5000,
+   *   error: 'Network timeout',
+   * });
+   * ```
+   */
+  static reportAsyncOperation(opts: {
+    operationType: 'saga_take' | 'saga_put' | 'saga_call' | 'saga_fork' | 'saga_all' | 'saga_race' | 'saga_select' | 'saga_delay' | 'async_task' | 'background_job' | 'custom';
+    description: string;
+    status: 'start' | 'resolve' | 'reject';
+    duration?: number;
+    sagaName?: string;
+    error?: string;
+    result?: any;
+    metadata?: Record<string, any>;
+  }): void {
+    DevConnect.safeSend('client:async:operation', {
+      operationType: opts.operationType,
+      description: opts.description,
+      status: opts.status,
+      ...(opts.duration != null ? { duration: opts.duration } : {}),
+      ...(opts.sagaName ? { sagaName: opts.sagaName } : {}),
+      ...(opts.error ? { error: opts.error } : {}),
+      ...(opts.result !== undefined ? { result: opts.result } : {}),
+      ...(opts.metadata ? { metadata: opts.metadata } : {}),
+    });
+  }
+
   // ---- Custom commands (desktop -> app) ----
 
   /**

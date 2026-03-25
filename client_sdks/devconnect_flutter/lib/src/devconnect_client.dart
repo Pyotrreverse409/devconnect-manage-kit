@@ -778,6 +778,78 @@ class DevConnectClient {
     });
   }
 
+  // ---- Custom Display ----
+
+  /// Send a custom display value to DevConnect desktop.
+  ///
+  /// ```dart
+  /// DevConnect.instance.display(
+  ///   'User Profile',
+  ///   value: {'name': 'John', 'age': 30},
+  ///   preview: 'John, 30',
+  ///   image: 'base64-encoded-image-string',
+  /// );
+  /// ```
+  void display(
+    String name, {
+    dynamic value,
+    String? preview,
+    String? image,
+    Map<String, dynamic>? metadata,
+  }) {
+    _send('client:display', {
+      'name': name,
+      if (value != null) 'value': value,
+      if (preview != null) 'preview': preview,
+      if (image != null) 'image': image,
+      if (metadata != null) 'metadata': metadata,
+    });
+  }
+
+  // ---- Async Operations (Saga/Task tracking) ----
+
+  /// Report an async operation (saga step, background task, etc.).
+  ///
+  /// ```dart
+  /// DevConnect.instance.reportAsyncOperation(
+  ///   operationType: 'saga_call',
+  ///   description: 'Fetching user data',
+  ///   status: 'start',
+  ///   sagaName: 'userSaga',
+  /// );
+  ///
+  /// // Later, when it completes:
+  /// DevConnect.instance.reportAsyncOperation(
+  ///   operationType: 'saga_call',
+  ///   description: 'Fetching user data',
+  ///   status: 'resolve',
+  ///   sagaName: 'userSaga',
+  ///   duration: 350,
+  ///   result: {'userId': 123},
+  /// );
+  /// ```
+  void reportAsyncOperation({
+    required String operationType,
+    required String description,
+    required String status,
+    int? duration,
+    String? sagaName,
+    String? error,
+    dynamic result,
+    Map<String, dynamic>? metadata,
+  }) {
+    _send('client:async:operation', {
+      'operationType': operationType,
+      'description': description,
+      'status': status,
+      if (duration != null) 'duration': duration,
+      if (sagaName != null) 'sagaName': sagaName,
+      if (error != null) 'error': error,
+      if (result != null) 'result': result,
+      if (metadata != null) 'metadata': metadata,
+    });
+  }
+
   // ---- Custom commands ----
 
   void registerCommand(
