@@ -12,6 +12,7 @@ import '../../components/layout/sidebar.dart';
 import '../providers/tab_visibility_provider.dart';
 import '../theme/theme_provider.dart';
 import '../../features/last_connected/provider/last_connected_providers.dart';
+import '../../server/providers/server_providers.dart';
 
 /// Breakpoint below which sidebar auto-collapses
 const _collapseBreakpoint = 920.0;
@@ -42,6 +43,8 @@ class _AppShellState extends ConsumerState<AppShell> {
   Widget build(BuildContext context) {
     // Initialize the last connected provider so disconnect listeners are active
     ref.watch(lastConnectedProvider);
+    // Auto-select device when exactly one is connected
+    ref.watch(autoSelectDeviceProvider);
     final isCollapsed = ref.watch(sidebarCollapsedProvider);
 
     return Scaffold(

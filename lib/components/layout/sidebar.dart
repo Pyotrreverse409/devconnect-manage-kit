@@ -61,6 +61,11 @@ final sidebarItems = [
     routePath: '/memory-leaks',
   ),
   const SidebarItem(
+    label: 'Bench',
+    icon: LucideIcons.timer,
+    routePath: '/benchmark',
+  ),
+  const SidebarItem(
     label: 'History',
     icon: LucideIcons.history,
     routePath: '/history',

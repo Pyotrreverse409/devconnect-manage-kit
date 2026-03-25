@@ -30,13 +30,25 @@ final connectedDevicesProvider =
 /// null = show all devices, non-null = filter by this deviceId
 final selectedDeviceProvider =
     StateNotifierProvider<SelectedDeviceNotifier, String?>((ref) {
-  // Auto-select first device when it connects
+  return SelectedDeviceNotifier();
+});
+
+/// Auto-select first device when exactly one is connected.
+/// Watch this provider from AppShell or a top-level widget.
+final autoSelectDeviceProvider = Provider<void>((ref) {
   final devices = ref.watch(connectedDevicesProvider);
-  final notifier = SelectedDeviceNotifier();
-  if (devices.length == 1) {
-    notifier.select(devices.first.deviceId);
+  final selected = ref.watch(selectedDeviceProvider);
+  if (devices.length == 1 && selected == null) {
+    Future.microtask(() {
+      ref.read(selectedDeviceProvider.notifier).select(devices.first.deviceId);
+    });
   }
-  return notifier;
+  // Clear selection if selected device disconnected
+  if (selected != null && !devices.any((d) => d.deviceId == selected)) {
+    Future.microtask(() {
+      ref.read(selectedDeviceProvider.notifier).select(null);
+    });
+  }
 });
 
 class ConnectedDevicesNotifier extends StateNotifier<List<DeviceInfo>> {
