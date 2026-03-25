@@ -45,11 +45,13 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
   }
 
   void _onScroll() {
-    if (!_autoScroll &&
-        !_loadingMore &&
-        _scrollController.hasClients &&
-        _scrollController.position.pixels < 50) {
-      _loadMore();
+    if (_loadingMore || !_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final scrollDir = ref.read(scrollDirectionProvider);
+    if (scrollDir == ScrollDirection.bottom) {
+      if (pos.pixels < 50) _loadMore();
+    } else {
+      if (pos.pixels > pos.maxScrollExtent - 50) _loadMore();
     }
   }
 
@@ -58,6 +60,7 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
     if (_maxVisible >= entries.length) return;
 
     _loadingMore = true;
+    final scrollDir = ref.read(scrollDirectionProvider);
     final oldMaxExtent = _scrollController.position.maxScrollExtent;
 
     setState(() {
@@ -65,7 +68,7 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (_scrollController.hasClients && scrollDir == ScrollDirection.bottom) {
         final newMaxExtent = _scrollController.position.maxScrollExtent;
         _scrollController.jumpTo(
           _scrollController.position.pixels + (newMaxExtent - oldMaxExtent),
@@ -89,13 +92,25 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
     final theme = Theme.of(context);
 
     // Compute visible window for pagination
-    final startIndex =
-        (entries.length - _maxVisible).clamp(0, entries.length);
-    final visibleEntries = entries.sublist(startIndex);
-    final hasMore = startIndex > 0;
-
-    // Auto-scroll when new entries arrive
     final scrollDir = ref.watch(scrollDirectionProvider);
+    ref.listen<ScrollDirection>(scrollDirectionProvider, (prev, next) {
+      if (prev != next) {
+        setState(() => _maxVisible = _pageSize);
+      }
+    });
+
+    final List<NetworkEntry> visibleEntries;
+    final bool hasMore;
+    if (scrollDir == ScrollDirection.bottom) {
+      final startIndex =
+          (entries.length - _maxVisible).clamp(0, entries.length);
+      visibleEntries = entries.sublist(startIndex);
+      hasMore = startIndex > 0;
+    } else {
+      final reversed = entries.reversed.toList();
+      visibleEntries = reversed.take(_maxVisible).toList();
+      hasMore = entries.length > _maxVisible;
+    }
     if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
@@ -145,29 +160,10 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
                       flex: selected != null ? 2 : 1,
                       child: Column(
                         children: [
-                          if (hasMore && !_autoScroll)
-                            GestureDetector(
+                          if (hasMore && scrollDir == ScrollDirection.bottom)
+                            _LoadMoreBanner(
+                              count: entries.length - visibleEntries.length,
                               onTap: _loadMore,
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.click,
-                                child: Container(
-                                  width: double.infinity,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 6),
-                                  color: ColorTokens.primary
-                                      .withValues(alpha: 0.05),
-                                  child: Center(
-                                    child: Text(
-                                      '${entries.length - visibleEntries.length} older requests — tap to load more',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: ColorTokens.primary,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
                             ),
                           Expanded(
                             child: ListView.builder(
@@ -195,6 +191,11 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
                               },
                             ),
                           ),
+                          if (hasMore && scrollDir == ScrollDirection.top)
+                            _LoadMoreBanner(
+                              count: entries.length - visibleEntries.length,
+                              onTap: _loadMore,
+                            ),
                         ],
                       ),
                     ),
@@ -216,6 +217,38 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _LoadMoreBanner extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _LoadMoreBanner({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          color: ColorTokens.primary.withValues(alpha: 0.05),
+          child: Center(
+            child: Text(
+              '$count older requests — tap to load more',
+              style: TextStyle(
+                fontSize: 10,
+                color: ColorTokens.primary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1137,93 +1170,170 @@ class _HeadersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Request Headers', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          _HeaderTable(headers: entry.requestHeaders),
-          const SizedBox(height: 20),
-          Text('Response Headers', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          _HeaderTable(headers: entry.responseHeaders),
+          _HeaderSection(
+            icon: LucideIcons.arrowUpRight,
+            iconColor: ColorTokens.primary,
+            title: 'Request Headers',
+            count: entry.requestHeaders.length,
+            headers: entry.requestHeaders,
+            isDark: isDark,
+          ),
+          const SizedBox(height: 16),
+          _HeaderSection(
+            icon: LucideIcons.arrowDownLeft,
+            iconColor: ColorTokens.success,
+            title: 'Response Headers',
+            count: entry.responseHeaders.length,
+            headers: entry.responseHeaders,
+            isDark: isDark,
+          ),
         ],
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Header table
-// ---------------------------------------------------------------------------
-
-class _HeaderTable extends StatelessWidget {
+class _HeaderSection extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final int count;
   final Map<String, String> headers;
+  final bool isDark;
 
-  const _HeaderTable({required this.headers});
+  const _HeaderSection({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.count,
+    required this.headers,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    if (headers.isEmpty) {
-      return Text(
-        'No headers',
-        style: TextStyle(color: Colors.grey[500], fontSize: 12),
-      );
-    }
-
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(6),
+        color: isDark ? const Color(0xFF161B22) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.black.withValues(alpha: 0.06),
+        ),
       ),
       child: Column(
-        children: headers.entries.map((e) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1C2128) : const Color(0xFFF6F8FA),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(10)),
               border: Border(
                 bottom: BorderSide(
-                  color: theme.dividerColor.withValues(alpha: 0.5),
-                  width: 0.5,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.black.withValues(alpha: 0.06),
                 ),
               ),
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  width: 180,
-                  child: Text(
-                    e.key,
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: ColorTokens.primary,
-                    ),
+                Icon(icon, size: 13, color: iconColor),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white70 : Colors.black87,
                   ),
                 ),
-                Expanded(
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Text(
-                    e.value,
+                    '$count',
                     style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 11,
-                      color: isDark ? Colors.white70 : Colors.black87,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: iconColor,
                     ),
                   ),
                 ),
               ],
             ),
-          );
-        }).toList(),
+          ),
+          if (headers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('No headers',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+            )
+          else
+            ...headers.entries.toList().asMap().entries.map((entry) {
+              final e = entry.value;
+              final isLast = entry.key == headers.length - 1;
+              return Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: isLast
+                    ? null
+                    : BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.04)
+                                : Colors.black.withValues(alpha: 0.04),
+                          ),
+                        ),
+                      ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 180,
+                      child: SelectableText(
+                        e.key,
+                        style: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? const Color(0xFF9CDCFE)
+                              : const Color(0xFF0451A5),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: SelectableText(
+                        e.value,
+                        style: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 11,
+                          color: isDark
+                              ? const Color(0xFFCE9178)
+                              : const Color(0xFFA31515),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
       ),
     );
   }
@@ -1411,47 +1521,182 @@ class _TimingTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final duration = entry.duration;
+    final startDt = DateTime.fromMillisecondsSinceEpoch(entry.startTime);
+    final endDt = entry.endTime != null
+        ? DateTime.fromMillisecondsSinceEpoch(entry.endTime!)
+        : null;
+
+    Color durationColor;
+    String durationLabel;
+    IconData durationIcon;
+    if (duration == null) {
+      durationColor = Colors.grey;
+      durationLabel = 'Pending';
+      durationIcon = LucideIcons.loader;
+    } else if (duration < 200) {
+      durationColor = ColorTokens.success;
+      durationLabel = 'Fast';
+      durationIcon = LucideIcons.zap;
+    } else if (duration < 500) {
+      durationColor = ColorTokens.warning;
+      durationLabel = 'Normal';
+      durationIcon = LucideIcons.clock;
+    } else if (duration < 2000) {
+      durationColor = const Color(0xFFE5853D);
+      durationLabel = 'Slow';
+      durationIcon = LucideIcons.triangleAlert;
+    } else {
+      durationColor = ColorTokens.error;
+      durationLabel = 'Very Slow';
+      durationIcon = LucideIcons.circleAlert;
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _InfoRow(
-            'Start Time',
-            DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
-              DateTime.fromMillisecondsSinceEpoch(entry.startTime),
-            ),
-          ),
-          if (entry.endTime != null)
-            _InfoRow(
-              'End Time',
-              DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(
-                DateTime.fromMillisecondsSinceEpoch(entry.endTime!),
+          // Duration hero card
+          if (duration != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    durationColor.withValues(alpha: 0.12),
+                    durationColor.withValues(alpha: 0.04),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: durationColor.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: durationColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(durationIcon, size: 22, color: durationColor),
+                  ),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${duration}ms',
+                        style: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: durationColor,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        durationLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: durationColor.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: CustomPaint(
+                      painter: _GaugePainter(
+                        ratio: (duration / 2000).clamp(0.0, 1.0),
+                        color: durationColor,
+                        isDark: isDark,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          if (entry.duration != null)
-            _InfoRow('Duration', '${entry.duration}ms'),
-          if (entry.error != null) ...[
+          const SizedBox(height: 16),
+          // Timeline card
+          _TimingInfoCard(
+            isDark: isDark,
+            children: [
+              _TimingInfoRow(
+                icon: LucideIcons.play,
+                iconColor: ColorTokens.success,
+                label: 'Start Time',
+                value: DateFormat('HH:mm:ss.SSS').format(startDt),
+                subtitle: DateFormat('yyyy-MM-dd').format(startDt),
+                isDark: isDark,
+              ),
+              if (endDt != null) ...[
+                _TimingDividerLine(isDark: isDark),
+                _TimingInfoRow(
+                  icon: LucideIcons.square,
+                  iconColor: ColorTokens.error,
+                  label: 'End Time',
+                  value: DateFormat('HH:mm:ss.SSS').format(endDt),
+                  subtitle: DateFormat('yyyy-MM-dd').format(endDt),
+                  isDark: isDark,
+                ),
+              ],
+            ],
+          ),
+          if (entry.statusCode > 0) ...[
             const SizedBox(height: 12),
-            Text('Error', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
+            _TimingInfoCard(
+              isDark: isDark,
+              children: [
+                _TimingInfoRow(
+                  icon: LucideIcons.arrowUpRight,
+                  iconColor: ColorTokens.primary,
+                  label: 'Method',
+                  value: entry.method,
+                  isDark: isDark,
+                ),
+                _TimingDividerLine(isDark: isDark),
+                _TimingInfoRow(
+                  icon: LucideIcons.hash,
+                  iconColor: entry.statusCode >= 400
+                      ? ColorTokens.error
+                      : ColorTokens.success,
+                  label: 'Status',
+                  value: '${entry.statusCode}',
+                  isDark: isDark,
+                ),
+              ],
+            ),
+          ],
+          if (entry.error != null) ...[
+            const SizedBox(height: 16),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: ColorTokens.error.withValues(alpha: 0.1),
+                color: ColorTokens.error.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(8),
-                border:
-                    Border.all(color: ColorTokens.error.withValues(alpha: 0.3)),
+                border: Border.all(
+                    color: ColorTokens.error.withValues(alpha: 0.15)),
               ),
-              child: Text(
+              child: SelectableText(
                 entry.error!,
                 style: TextStyle(
                   fontFamily: 'JetBrains Mono',
-                  fontSize: 12,
-                  color: ColorTokens.error,
+                  fontSize: 11,
+                  color: ColorTokens.error.withValues(alpha: 0.9),
+                  height: 1.5,
                 ),
               ),
             ),
@@ -1462,38 +1707,170 @@ class _TimingTab extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Info row (key-value for timing tab)
-// ---------------------------------------------------------------------------
+class _TimingInfoCard extends StatelessWidget {
+  final bool isDark;
+  final List<Widget> children;
+  const _TimingInfoCard({required this.isDark, required this.children});
 
-class _InfoRow extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF161B22) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.black.withValues(alpha: 0.06),
+        ),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _TimingInfoRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
   final String label;
   final String value;
+  final String? subtitle;
+  final bool isDark;
 
-  const _InfoRow(this.label, this.value);
+  const _TimingInfoRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+    this.subtitle,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: Icon(icon, size: 14, color: iconColor),
+          ),
+          const SizedBox(width: 12),
           SizedBox(
-            width: 120,
+            width: 80,
             child: Text(
               label,
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[500],
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontFamily: 'JetBrains Mono',
-              fontSize: 12,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _TimingDividerLine extends StatelessWidget {
+  final bool isDark;
+  const _TimingDividerLine({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 28),
+      child: Divider(
+        height: 1,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.black.withValues(alpha: 0.06),
+      ),
+    );
+  }
+}
+
+class _GaugePainter extends CustomPainter {
+  final double ratio;
+  final Color color;
+  final bool isDark;
+
+  _GaugePainter({
+    required this.ratio,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = size.width / 2 - 4;
+    const startAngle = 2.356;
+    const sweepTotal = 4.712;
+
+    final bgPaint = Paint()
+      ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08)
+      ..strokeWidth = 5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      startAngle,
+      sweepTotal,
+      false,
+      bgPaint,
+    );
+
+    final valuePaint = Paint()
+      ..color = color
+      ..strokeWidth = 5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      startAngle,
+      sweepTotal * ratio,
+      false,
+      valuePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GaugePainter old) =>
+      old.ratio != ratio || old.color != color;
 }

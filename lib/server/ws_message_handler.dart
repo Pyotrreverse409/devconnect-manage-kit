@@ -5,6 +5,7 @@ import '../models/device_info.dart';
 import '../models/log/log_entry.dart';
 import '../models/network/network_entry.dart';
 import '../models/state/state_change.dart';
+import '../models/performance/performance_entry.dart';
 import '../models/storage/storage_entry.dart';
 import 'protocol/dc_message.dart';
 import 'ws_server.dart';
@@ -21,6 +22,8 @@ class WsMessageHandler {
   final _benchmarkController = StreamController<Map<String, dynamic>>.broadcast();
   final _stateSnapshotController = StreamController<Map<String, dynamic>>.broadcast();
   final _customResultController = StreamController<Map<String, dynamic>>.broadcast();
+  final _performanceController = StreamController<PerformanceEntry>.broadcast();
+  final _memoryLeakController = StreamController<MemoryLeakEntry>.broadcast();
 
   Stream<LogEntry> get onLog => _logController.stream;
   Stream<NetworkEntry> get onNetwork => _networkController.stream;
@@ -31,6 +34,8 @@ class WsMessageHandler {
   Stream<Map<String, dynamic>> get onBenchmark => _benchmarkController.stream;
   Stream<Map<String, dynamic>> get onStateSnapshot => _stateSnapshotController.stream;
   Stream<Map<String, dynamic>> get onCustomResult => _customResultController.stream;
+  Stream<PerformanceEntry> get onPerformance => _performanceController.stream;
+  Stream<MemoryLeakEntry> get onMemoryLeak => _memoryLeakController.stream;
 
   late final StreamSubscription<DCMessage> _messageSub;
   late final StreamSubscription<DeviceInfo> _connectionSub;
@@ -69,6 +74,12 @@ class WsMessageHandler {
           'deviceId': message.deviceId,
           ...message.payload,
         });
+        break;
+      case WsMessageTypes.clientPerformanceMetric:
+        _handlePerformance(message);
+        break;
+      case WsMessageTypes.clientMemoryLeak:
+        _handleMemoryLeak(message);
         break;
       case WsMessageTypes.clientCustom:
       case WsMessageTypes.clientCustomCommandResult:
@@ -221,6 +232,69 @@ class WsMessageHandler {
     }
   }
 
+  void _handlePerformance(DCMessage message) {
+    final p = message.payload;
+    final entry = PerformanceEntry(
+      id: message.id,
+      deviceId: message.deviceId,
+      metricType: _parseMetricType(p['metricType'] as String? ?? 'fps'),
+      value: (p['value'] as num?)?.toDouble() ?? 0.0,
+      timestamp: message.timestamp,
+      metadata: p['metadata'] as Map<String, dynamic>?,
+    );
+    _performanceController.add(entry);
+  }
+
+  void _handleMemoryLeak(DCMessage message) {
+    final p = message.payload;
+    final entry = MemoryLeakEntry(
+      id: message.id,
+      deviceId: message.deviceId,
+      leakType: _parseLeakType(p['leakType'] as String? ?? 'custom'),
+      objectName: p['objectName'] as String? ?? '',
+      detail: p['detail'] as String? ?? '',
+      severity: _parseLeakSeverity(p['severity'] as String? ?? 'warning'),
+      timestamp: message.timestamp,
+      stackTrace: p['stackTrace'] as String?,
+      retainedSizeBytes: p['retainedSizeBytes'] as int?,
+      metadata: p['metadata'] as Map<String, dynamic>?,
+    );
+    _memoryLeakController.add(entry);
+  }
+
+  PerformanceMetricType _parseMetricType(String type) {
+    switch (type) {
+      case 'fps': return PerformanceMetricType.fps;
+      case 'frameBuildTime': return PerformanceMetricType.frameBuildTime;
+      case 'frameRasterTime': return PerformanceMetricType.frameRasterTime;
+      case 'memoryUsage': return PerformanceMetricType.memoryUsage;
+      case 'memoryPeak': return PerformanceMetricType.memoryPeak;
+      case 'cpuUsage': return PerformanceMetricType.cpuUsage;
+      case 'jankFrame': return PerformanceMetricType.jankFrame;
+      default: return PerformanceMetricType.fps;
+    }
+  }
+
+  MemoryLeakType _parseLeakType(String type) {
+    switch (type) {
+      case 'undisposedController': return MemoryLeakType.undisposedController;
+      case 'undisposedStream': return MemoryLeakType.undisposedStream;
+      case 'undisposedTimer': return MemoryLeakType.undisposedTimer;
+      case 'undisposedAnimationController': return MemoryLeakType.undisposedAnimationController;
+      case 'widgetLeak': return MemoryLeakType.widgetLeak;
+      case 'growingCollection': return MemoryLeakType.growingCollection;
+      default: return MemoryLeakType.custom;
+    }
+  }
+
+  MemoryLeakSeverity _parseLeakSeverity(String severity) {
+    switch (severity) {
+      case 'info': return MemoryLeakSeverity.info;
+      case 'critical': return MemoryLeakSeverity.critical;
+      default: return MemoryLeakSeverity.warning;
+    }
+  }
+
   Map<String, String> _castStringMap(dynamic map) {
     if (map is Map) {
       return map.map((k, v) => MapEntry(k.toString(), v.toString()));
@@ -241,5 +315,7 @@ class WsMessageHandler {
     _benchmarkController.close();
     _stateSnapshotController.close();
     _customResultController.close();
+    _performanceController.close();
+    _memoryLeakController.close();
   }
 }

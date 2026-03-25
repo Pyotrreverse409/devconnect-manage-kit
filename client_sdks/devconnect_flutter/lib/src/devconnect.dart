@@ -84,6 +84,8 @@ class DevConnect {
     int port = 9090,
     bool auto_ = true,
     bool enabled = true,
+    bool autoInterceptHttp = true,
+    bool autoInterceptLogs = true,
   }) async {
     WidgetsFlutterBinding.ensureInitialized();
 
@@ -101,10 +103,16 @@ class DevConnect {
     );
 
     // Intercept ALL HTTP traffic globally
-    HttpOverrides.global = DevConnectHttpOverrides();
+    if (autoInterceptHttp) {
+      HttpOverrides.global = DevConnectHttpOverrides();
+    }
 
     // Run app in zone that captures print() and debugPrint()
-    runZoned(runApp);
+    if (autoInterceptLogs) {
+      runZoned(runApp);
+    } else {
+      runApp();
+    }
   }
 
   /// Initialize DevConnect and connect to desktop app.
@@ -337,6 +345,40 @@ class DevConnect {
       previousState: previousState,
       nextState: nextState,
       diff: diff,
+    );
+  }
+
+  // ---- Performance ----
+
+  static void reportPerformanceMetric({
+    required String metricType,
+    required double value,
+    Map<String, dynamic>? metadata,
+  }) {
+    client.reportPerformanceMetric(
+      metricType: metricType,
+      value: value,
+      metadata: metadata,
+    );
+  }
+
+  static void reportMemoryLeak({
+    required String leakType,
+    required String objectName,
+    required String detail,
+    String severity = 'warning',
+    String? stackTrace,
+    int? retainedSizeBytes,
+    Map<String, dynamic>? metadata,
+  }) {
+    client.reportMemoryLeak(
+      leakType: leakType,
+      objectName: objectName,
+      detail: detail,
+      severity: severity,
+      stackTrace: stackTrace,
+      retainedSizeBytes: retainedSizeBytes,
+      metadata: metadata,
     );
   }
 

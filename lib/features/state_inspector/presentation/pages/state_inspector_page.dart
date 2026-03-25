@@ -44,10 +44,15 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
   }
 
   void _onScroll() {
-    if (!_autoScroll &&
-        !_loadingMore &&
-        _scrollController.position.pixels < 50) {
-      _loadMore();
+    if (_loadingMore || !_scrollController.hasClients) return;
+
+    final pos = _scrollController.position;
+    final scrollDir = ref.read(scrollDirectionProvider);
+
+    if (scrollDir == ScrollDirection.bottom) {
+      if (pos.pixels < 50) _loadMore();
+    } else {
+      if (pos.pixels > pos.maxScrollExtent - 50) _loadMore();
     }
   }
 
@@ -56,6 +61,7 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
     if (_maxVisible >= entries.length) return;
 
     _loadingMore = true;
+    final scrollDir = ref.read(scrollDirectionProvider);
     final oldMaxExtent = _scrollController.position.maxScrollExtent;
 
     setState(() {
@@ -63,7 +69,7 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
     });
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (_scrollController.hasClients && scrollDir == ScrollDirection.bottom) {
         final newMaxExtent = _scrollController.position.maxScrollExtent;
         _scrollController.jumpTo(
           _scrollController.offset + (newMaxExtent - oldMaxExtent),
@@ -105,9 +111,30 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
     final selected = ref.watch(selectedStateChangeProvider);
     final theme = Theme.of(context);
 
-    final startIndex = (entries.length - _maxVisible).clamp(0, entries.length);
-    final visibleEntries = entries.sublist(startIndex);
-    final hasMore = startIndex > 0;
+    // Reset pagination when scroll direction changes
+    final scrollDir = ref.watch(scrollDirectionProvider);
+    ref.listen<ScrollDirection>(scrollDirectionProvider, (prev, next) {
+      if (prev != next) {
+        setState(() => _maxVisible = _pageSize);
+        SchedulerBinding.instance
+            .addPostFrameCallback((_) => _scrollToTarget());
+      }
+    });
+
+    // Slice visible items based on scroll direction
+    final List<StateChange> visibleEntries;
+    final bool hasMore;
+
+    if (scrollDir == ScrollDirection.bottom) {
+      final startIndex =
+          (entries.length - _maxVisible).clamp(0, entries.length);
+      visibleEntries = entries.sublist(startIndex);
+      hasMore = startIndex > 0;
+    } else {
+      final reversed = entries.reversed.toList();
+      visibleEntries = reversed.take(_maxVisible).toList();
+      hasMore = entries.length > _maxVisible;
+    }
 
     // Auto-scroll when new items arrive and autoScroll is on
     if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
@@ -141,7 +168,7 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
                       flex: selected != null ? 2 : 1,
                       child: Column(
                         children: [
-                          if (hasMore && !_autoScroll)
+                          if (hasMore && scrollDir == ScrollDirection.bottom)
                             GestureDetector(
                               onTap: _loadMore,
                               child: MouseRegion(
@@ -187,6 +214,30 @@ class _StateInspectorPageState extends ConsumerState<StateInspectorPage> {
                               },
                             ),
                           ),
+                          if (hasMore && scrollDir == ScrollDirection.top)
+                            GestureDetector(
+                              onTap: _loadMore,
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 6),
+                                  color: ColorTokens.primary
+                                      .withValues(alpha: 0.05),
+                                  child: Center(
+                                    child: Text(
+                                      '${entries.length - visibleEntries.length} older changes — tap to load more',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: ColorTokens.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

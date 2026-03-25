@@ -136,7 +136,8 @@ object DevConnect {
         host: String? = null,
         port: Int = 9090,
         auto: Boolean = true,
-        enabled: Boolean = true
+        enabled: Boolean = true,
+        autoInterceptLogs: Boolean = false
     ) {
         this.enabled = enabled
         if (!enabled) return
@@ -160,6 +161,11 @@ object DevConnect {
             appVersion = appVersion
         )
         client?.connect()
+
+        // Auto-intercept System.out (println) if enabled
+        if (autoInterceptLogs) {
+            com.devconnect.interceptors.DevConnectLogInterceptor.interceptSystemOut()
+        }
 
         // Flush pre-init queue (messages from interceptors before init)
         if (preInitQueue.isNotEmpty()) {

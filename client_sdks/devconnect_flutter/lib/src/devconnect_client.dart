@@ -742,6 +742,40 @@ class DevConnectClient {
     });
   }
 
+  // ---- Performance Profiling ----
+
+  void reportPerformanceMetric({
+    required String metricType,
+    required double value,
+    Map<String, dynamic>? metadata,
+  }) {
+    _send('client:performance:metric', {
+      'metricType': metricType,
+      'value': value,
+      if (metadata != null) 'metadata': metadata,
+    });
+  }
+
+  void reportMemoryLeak({
+    required String leakType,
+    required String objectName,
+    required String detail,
+    String severity = 'warning',
+    String? stackTrace,
+    int? retainedSizeBytes,
+    Map<String, dynamic>? metadata,
+  }) {
+    _send('client:memory:leak', {
+      'leakType': leakType,
+      'objectName': objectName,
+      'detail': detail,
+      'severity': severity,
+      if (stackTrace != null) 'stackTrace': stackTrace,
+      if (retainedSizeBytes != null) 'retainedSizeBytes': retainedSizeBytes,
+      if (metadata != null) 'metadata': metadata,
+    });
+  }
+
   // ---- Custom commands ----
 
   void registerCommand(

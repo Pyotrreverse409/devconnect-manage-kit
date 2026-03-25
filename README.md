@@ -200,9 +200,11 @@ await DevConnect.initAndRunApp(
   appName: 'MyApp',
   runApp: () => runApp(const MyApp()),
   appVersion: '1.0.0',
-  host: null,              // null = auto-detect, '192.168.1.100' = manual
-  port: 9090,              // default: 9090
-  enabled: true,           // false = disable (production)
+  host: null,                  // null = auto-detect, '192.168.1.100' = manual
+  port: 9090,                  // default: 9090
+  enabled: true,               // false = disable (production)
+  autoInterceptHttp: true,     // auto-capture all HTTP (default: true)
+  autoInterceptLogs: true,     // auto-capture print/debugPrint (default: true)
 );
 ```
 
@@ -715,9 +717,10 @@ DevConnect.init(
     context = this,
     appName = "MyApp",
     appVersion = "1.0.0",
-    host = null,                 // null = auto-detect, "192.168.1.100" = manual
-    port = 9090,                 // default: 9090
-    enabled = BuildConfig.DEBUG, // false in release
+    host = null,                    // null = auto-detect, "192.168.1.100" = manual
+    port = 9090,                    // default: 9090
+    enabled = BuildConfig.DEBUG,    // false in release
+    autoInterceptLogs = true,       // auto-capture println() (default: false)
 )
 ```
 

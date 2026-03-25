@@ -44,10 +44,15 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
   }
 
   void _onScroll() {
-    if (!_autoScroll &&
-        !_loadingMore &&
-        _scrollController.position.pixels < 50) {
-      _loadMore();
+    if (_loadingMore || !_scrollController.hasClients) return;
+
+    final pos = _scrollController.position;
+    final scrollDir = ref.read(scrollDirectionProvider);
+
+    if (scrollDir == ScrollDirection.bottom) {
+      if (pos.pixels < 50) _loadMore();
+    } else {
+      if (pos.pixels > pos.maxScrollExtent - 50) _loadMore();
     }
   }
 
@@ -56,6 +61,7 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
     if (_maxVisible >= entries.length) return;
 
     _loadingMore = true;
+    final scrollDir = ref.read(scrollDirectionProvider);
     final oldMaxExtent = _scrollController.position.maxScrollExtent;
 
     setState(() {
@@ -63,7 +69,7 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
     });
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (_scrollController.hasClients && scrollDir == ScrollDirection.bottom) {
         final newMaxExtent = _scrollController.position.maxScrollExtent;
         _scrollController.jumpTo(
           _scrollController.offset + (newMaxExtent - oldMaxExtent),
@@ -105,9 +111,29 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
     final selected = ref.watch(selectedStorageEntryProvider);
     final theme = Theme.of(context);
 
-    final startIndex = (entries.length - _maxVisible).clamp(0, entries.length);
-    final visibleEntries = entries.sublist(startIndex);
-    final hasMore = startIndex > 0;
+    // Reset pagination when scroll direction changes
+    final scrollDir = ref.watch(scrollDirectionProvider);
+    ref.listen<ScrollDirection>(scrollDirectionProvider, (prev, next) {
+      if (prev != next) {
+        setState(() => _maxVisible = _pageSize);
+        _scrollToTarget();
+      }
+    });
+
+    // Slice visible items based on scroll direction
+    final List<StorageEntry> visibleEntries;
+    final bool hasMore;
+
+    if (scrollDir == ScrollDirection.bottom) {
+      final startIndex =
+          (entries.length - _maxVisible).clamp(0, entries.length);
+      visibleEntries = entries.sublist(startIndex);
+      hasMore = startIndex > 0;
+    } else {
+      final reversed = entries.reversed.toList();
+      visibleEntries = reversed.take(_maxVisible).toList();
+      hasMore = entries.length > _maxVisible;
+    }
 
     // Auto-scroll when new items arrive and autoScroll is enabled
     if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
@@ -139,7 +165,7 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
                       flex: selected != null ? 2 : 1,
                       child: Column(
                         children: [
-                          if (hasMore && !_autoScroll)
+                          if (hasMore && scrollDir == ScrollDirection.bottom)
                             GestureDetector(
                               onTap: _loadMore,
                               child: MouseRegion(
@@ -185,6 +211,30 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
                               },
                             ),
                           ),
+                          if (hasMore && scrollDir == ScrollDirection.top)
+                            GestureDetector(
+                              onTap: _loadMore,
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 6),
+                                  color: ColorTokens.primary
+                                      .withValues(alpha: 0.05),
+                                  child: Center(
+                                    child: Text(
+                                      '${entries.length - visibleEntries.length} older entries — tap to load more',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: ColorTokens.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

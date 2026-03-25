@@ -23,7 +23,7 @@ class ScrollDirectionButton extends ConsumerWidget {
         child: Tooltip(
           message: isTop ? 'Scroll to top (newest)' : 'Scroll to bottom (newest)',
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.grey.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(6),
@@ -36,14 +36,14 @@ class ScrollDirectionButton extends ConsumerWidget {
               children: [
                 Icon(
                   isTop ? LucideIcons.arrowUpToLine : LucideIcons.arrowDownToLine,
-                  size: 11,
+                  size: 14,
                   color: ColorTokens.primary,
                 ),
-                const SizedBox(width: 3),
+                const SizedBox(width: 5),
                 Text(
                   isTop ? 'TOP' : 'BTM',
                   style: TextStyle(
-                    fontSize: 9,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: ColorTokens.primary,
                     letterSpacing: 0.5,

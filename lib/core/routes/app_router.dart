@@ -8,6 +8,8 @@ import '../../features/network_inspector/presentation/pages/network_inspector_pa
 import '../../features/last_connected/presentation/pages/last_connected_page.dart';
 import '../../features/settings/presentation/pages/settings_page.dart';
 import '../../features/state_inspector/presentation/pages/state_inspector_page.dart';
+import '../../features/performance/presentation/pages/performance_page.dart';
+import '../../features/performance/presentation/pages/memory_leaks_page.dart';
 import '../../features/storage_viewer/presentation/pages/storage_viewer_page.dart';
 import '../routes/app_shell.dart';
 
@@ -61,6 +63,18 @@ final appRouter = GoRouter(
           path: '/database',
           pageBuilder: (context, state) => const NoTransitionPage(
             child: DatabaseViewerPage(),
+          ),
+        ),
+        GoRoute(
+          path: '/performance',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: PerformancePage(),
+          ),
+        ),
+        GoRoute(
+          path: '/memory-leaks',
+          pageBuilder: (context, state) => const NoTransitionPage(
+            child: MemoryLeaksPage(),
           ),
         ),
         GoRoute(

@@ -62,16 +62,23 @@ class _AppShellState extends ConsumerState<AppShell> {
                       context.go(sidebarItems[index].routePath);
                     },
                   ),
-                  Expanded(child: widget.child),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        if (Platform.isMacOS) const SizedBox(height: 64),
+                        Expanded(child: widget.child),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               // Draggable title bar (macOS)
               if (Platform.isMacOS)
                 Positioned(
                   top: 0,
-                  left: isCollapsed ? 16 : 68,
+                  left: isCollapsed ? 36 : 68,
                   right: 0,
-                  height: 38,
+                  height: 64,
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
                     onPanStart: (_) => windowManager.startDragging(),

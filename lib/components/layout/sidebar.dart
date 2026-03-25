@@ -51,6 +51,16 @@ final sidebarItems = [
     routePath: '/database',
   ),
   const SidebarItem(
+    label: 'Perf',
+    icon: LucideIcons.gauge,
+    routePath: '/performance',
+  ),
+  const SidebarItem(
+    label: 'Leaks',
+    icon: LucideIcons.bug,
+    routePath: '/memory-leaks',
+  ),
+  const SidebarItem(
     label: 'History',
     icon: LucideIcons.history,
     routePath: '/history',
@@ -100,7 +110,7 @@ class Sidebar extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          const SizedBox(height: 38),
+          const SizedBox(height: 64),
           // Logo
           Container(
             width: 40,
@@ -216,20 +226,12 @@ class Sidebar extends ConsumerWidget {
           // Collapse sidebar
           Padding(
             padding: const EdgeInsets.only(bottom: 8, left: 8, right: 8),
-            child: GestureDetector(
+            child: _CollapseExpandButton(
+              icon: LucideIcons.panelLeftClose,
+              tooltip: 'Collapse sidebar',
+              isDark: isDark,
               onTap: () =>
                   ref.read(sidebarCollapsedProvider.notifier).state = true,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: Tooltip(
-                  message: 'Collapse sidebar',
-                  child: Icon(
-                    LucideIcons.panelLeftClose,
-                    size: 16,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ),
             ),
           ),
           const SizedBox(height: 4),
@@ -248,7 +250,7 @@ class _CollapsedSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 16,
+      width: 36,
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF0D1117) : Colors.white,
         border: Border(
@@ -260,22 +262,79 @@ class _CollapsedSidebar extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const SizedBox(height: 42),
-          GestureDetector(
+          const SizedBox(height: 64),
+          _CollapseExpandButton(
+            icon: LucideIcons.panelLeftOpen,
+            tooltip: 'Expand sidebar',
+            isDark: isDark,
             onTap: onExpand,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: Tooltip(
-                message: 'Expand sidebar',
-                child: Icon(
-                  LucideIcons.panelLeftOpen,
-                  size: 12,
-                  color: Colors.grey[500],
-                ),
-              ),
-            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CollapseExpandButton extends StatefulWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _CollapseExpandButton({
+    required this.icon,
+    required this.tooltip,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  State<_CollapseExpandButton> createState() => _CollapseExpandButtonState();
+}
+
+class _CollapseExpandButtonState extends State<_CollapseExpandButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: Tooltip(
+          message: widget.tooltip,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: _hovered
+                  ? (widget.isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.06))
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: _hovered
+                    ? (widget.isDark
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Colors.black.withValues(alpha: 0.1))
+                    : (widget.isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.06)),
+              ),
+            ),
+            child: Icon(
+              widget.icon,
+              size: 14,
+              color: _hovered
+                  ? (widget.isDark ? Colors.white70 : Colors.black54)
+                  : Colors.grey[500],
+            ),
+          ),
+        ),
       ),
     );
   }

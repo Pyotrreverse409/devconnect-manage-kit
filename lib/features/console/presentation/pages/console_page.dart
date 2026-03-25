@@ -48,20 +48,27 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(() {
-      if (!_autoScroll &&
-          !_loadingMore &&
-          _scrollController.hasClients &&
-          _scrollController.position.pixels < 50) {
-        _loadMore();
-      }
-    });
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_loadingMore || !_scrollController.hasClients) return;
+
+    final pos = _scrollController.position;
+    final scrollDir = ref.read(scrollDirectionProvider);
+
+    if (scrollDir == ScrollDirection.bottom) {
+      if (pos.pixels < 50) _loadMore();
+    } else {
+      if (pos.pixels > pos.maxScrollExtent - 50) _loadMore();
+    }
   }
 
   void _loadMore() {
@@ -69,6 +76,7 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
     if (_maxVisible >= totalEntries) return;
 
     _loadingMore = true;
+    final scrollDir = ref.read(scrollDirectionProvider);
     final oldMaxExtent = _scrollController.position.maxScrollExtent;
 
     setState(() {
@@ -76,7 +84,7 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (_scrollController.hasClients && scrollDir == ScrollDirection.bottom) {
         final newMaxExtent = _scrollController.position.maxScrollExtent;
         _scrollController.jumpTo(
           _scrollController.position.pixels + (newMaxExtent - oldMaxExtent),
@@ -91,14 +99,30 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
     final entries = ref.watch(filteredConsoleEntriesProvider);
     final theme = Theme.of(context);
 
-    // Compute visible subset for pagination
-    final startIndex =
-        (entries.length - _maxVisible).clamp(0, entries.length);
-    final visibleEntries = entries.sublist(startIndex);
-    final hasMore = startIndex > 0;
+    // Reset pagination when scroll direction changes
+    final scrollDir = ref.watch(scrollDirectionProvider);
+    ref.listen<ScrollDirection>(scrollDirectionProvider, (prev, next) {
+      if (prev != next) {
+        setState(() => _maxVisible = _pageSize);
+      }
+    });
+
+    // Slice visible items based on scroll direction
+    final List<LogEntry> visibleEntries;
+    final bool hasMore;
+
+    if (scrollDir == ScrollDirection.bottom) {
+      final startIndex =
+          (entries.length - _maxVisible).clamp(0, entries.length);
+      visibleEntries = entries.sublist(startIndex);
+      hasMore = startIndex > 0;
+    } else {
+      final reversed = entries.reversed.toList();
+      visibleEntries = reversed.take(_maxVisible).toList();
+      hasMore = entries.length > _maxVisible;
+    }
 
     // Auto scroll when new items arrive
-    final scrollDir = ref.watch(scrollDirectionProvider);
     if (_autoScroll && entries.length > _previousCount && entries.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
@@ -154,7 +178,7 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
                       flex: _selectedEntry != null ? 3 : 1,
                       child: Column(
                         children: [
-                          if (hasMore && !_autoScroll)
+                          if (hasMore && scrollDir == ScrollDirection.bottom)
                             GestureDetector(
                               onTap: _loadMore,
                               child: MouseRegion(
@@ -203,6 +227,30 @@ class _ConsolePageState extends ConsumerState<ConsolePage> {
                               },
                             ),
                           ),
+                          if (hasMore && scrollDir == ScrollDirection.top)
+                            GestureDetector(
+                              onTap: _loadMore,
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 6),
+                                  color: ColorTokens.primary
+                                      .withValues(alpha: 0.05),
+                                  child: Center(
+                                    child: Text(
+                                      '${entries.length - visibleEntries.length} older logs — tap to load more',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: ColorTokens.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

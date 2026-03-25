@@ -1,11 +1,13 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../core/theme/theme_provider.dart';
 import 'sidebar.dart';
 
-class ShellLayout extends StatefulWidget {
+class ShellLayout extends ConsumerStatefulWidget {
   final Widget child;
   final int selectedIndex;
 
@@ -16,12 +18,15 @@ class ShellLayout extends StatefulWidget {
   });
 
   @override
-  State<ShellLayout> createState() => _ShellLayoutState();
+  ConsumerState<ShellLayout> createState() => _ShellLayoutState();
 }
 
-class _ShellLayoutState extends State<ShellLayout> {
+class _ShellLayoutState extends ConsumerState<ShellLayout> {
   @override
   Widget build(BuildContext context) {
+    final isCollapsed = ref.watch(sidebarCollapsedProvider);
+    final sidebarWidth = isCollapsed ? 36.0 : 68.0;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -35,7 +40,12 @@ class _ShellLayoutState extends State<ShellLayout> {
                 },
               ),
               Expanded(
-                child: widget.child,
+                child: Column(
+                  children: [
+                    if (Platform.isMacOS) const SizedBox(height: 64),
+                    Expanded(child: widget.child),
+                  ],
+                ),
               ),
             ],
           ),
@@ -43,9 +53,9 @@ class _ShellLayoutState extends State<ShellLayout> {
           if (Platform.isMacOS)
             Positioned(
               top: 0,
-              left: 68, // sidebar width
+              left: sidebarWidth,
               right: 0,
-              height: 38,
+              height: 64,
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onPanStart: (_) => windowManager.startDragging(),

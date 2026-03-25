@@ -1,3 +1,6 @@
+# Build artifacts
+*.dmg
+
 # Miscellaneous
 *.class
 *.log

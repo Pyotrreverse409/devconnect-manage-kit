@@ -32,4 +32,7 @@ class WsMessageTypes {
   static const String clientCustom = 'client:custom';
   static const String clientCustomCommandResult =
       'client:custom:command_result';
+  static const String clientPerformanceMetric =
+      'client:performance:metric';
+  static const String clientMemoryLeak = 'client:memory:leak';
 }
