@@ -69,8 +69,7 @@ class WebSocketClient(
                     sendRaw(messageQueue.poll()!!)
                 }
 
-                // Send handshake
-                sendHandshake()
+                // Wait for server:hello before sending handshake
 
                 // Listen for messages
                 listenForMessages(reader)

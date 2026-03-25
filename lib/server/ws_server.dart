@@ -137,7 +137,10 @@ class WsServer {
   void _handleRequest(HttpRequest request) async {
     if (WebSocketTransformer.isUpgradeRequest(request)) {
       final remoteIp = request.connectionInfo?.remoteAddress.address;
-      final socket = await WebSocketTransformer.upgrade(request);
+      final socket = await WebSocketTransformer.upgrade(
+        request,
+        compression: CompressionOptions.compressionOff,
+      );
       _handleWebSocket(socket, remoteIp);
     } else {
       request.response
