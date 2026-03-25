@@ -879,6 +879,43 @@ class _TabVisibilitySection extends ConsumerWidget {
 // USB Tools Section (ADB + iProxy combined)
 // ═══════════════════════════════════════════════════════════════════
 
+/// Resolve the full path to adb binary.
+/// Checks common SDK locations and user's shell PATH.
+Future<String?> _resolveAdbPath() async {
+  // 1. Check common locations
+  final home = Platform.environment['HOME'] ?? '';
+  final candidates = [
+    '$home/Library/Android/sdk/platform-tools/adb', // macOS default
+    '$home/Android/Sdk/platform-tools/adb', // Linux default
+    '/usr/local/bin/adb',
+    '/opt/homebrew/bin/adb',
+  ];
+
+  final androidHome = Platform.environment['ANDROID_HOME'] ??
+      Platform.environment['ANDROID_SDK_ROOT'];
+  if (androidHome != null) {
+    candidates.insert(0, '$androidHome/platform-tools/adb');
+  }
+
+  for (final path in candidates) {
+    if (await File(path).exists()) return path;
+  }
+
+  // 2. Try resolving via user's login shell
+  try {
+    final result = await Process.run(
+      '/bin/sh',
+      ['-lc', 'which adb'],
+    );
+    final path = result.stdout.toString().trim();
+    if (result.exitCode == 0 && path.isNotEmpty && await File(path).exists()) {
+      return path;
+    }
+  } catch (_) {}
+
+  return null;
+}
+
 class _UsbToolsSection extends StatelessWidget {
   final int port;
   final void Function(String, [String?]) onCopy;
@@ -917,8 +954,24 @@ class _UsbToolsSection extends StatelessWidget {
               color: ColorTokens.secondary,
               onTap: () async {
                 try {
+                  final adbPath = await _resolveAdbPath();
+                  if (adbPath == null) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'adb not found. Install Android SDK or set ANDROID_HOME.',
+                          ),
+                          backgroundColor: ColorTokens.error,
+                          behavior: SnackBarBehavior.floating,
+                          width: 400,
+                        ),
+                      );
+                    }
+                    return;
+                  }
                   final result = await Process.run(
-                    'adb',
+                    adbPath,
                     ['reverse', 'tcp:$port', 'tcp:$port'],
                   );
                   if (context.mounted) {
@@ -941,8 +994,8 @@ class _UsbToolsSection extends StatelessWidget {
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('adb not found'),
+                      SnackBar(
+                        content: Text('adb error: $e'),
                         backgroundColor: ColorTokens.error,
                       ),
                     );
@@ -957,7 +1010,9 @@ class _UsbToolsSection extends StatelessWidget {
               color: Colors.grey,
               onTap: () async {
                 try {
-                  final result = await Process.run('adb', ['devices']);
+                  final adbPath = await _resolveAdbPath();
+                  if (adbPath == null) return;
+                  final result = await Process.run(adbPath, ['devices']);
                   if (context.mounted) {
                     showDialog(
                       context: context,
