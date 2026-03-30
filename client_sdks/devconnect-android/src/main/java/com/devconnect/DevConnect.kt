@@ -83,7 +83,7 @@ object DevConnect {
      * @param appName Your app's name
      * @param appVersion Your app's version
      * @param host Desktop IP. null or "auto" for auto-detection.
-     * @param port WebSocket port (default: 9091)
+     * @param port WebSocket port (default: 9090)
      * @param auto Auto-detect host if not specified (default: true)
      * @param enabled Pass BuildConfig.DEBUG to disable in production (default: true)
      *
@@ -155,7 +155,7 @@ object DevConnect {
         appName: String,
         appVersion: String = "1.0.0",
         host: String? = null,
-        port: Int = 9091,
+        port: Int = 9090,
         auto: Boolean = true,
         enabled: Boolean = true,
         versionCode: String? = null,

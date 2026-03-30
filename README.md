@@ -12,7 +12,7 @@
 [![Android](https://img.shields.io/badge/Android-SDK-3DDC84?logo=android)](client_sdks/devconnect-android)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Features](#features) · [Download](#download) · [Quick Start](#quick-start) · [Why DevConnect?](#why-devconnect) · [SDKs](#flutter-sdk)
+[Features](#features) · [Download](#download) · [Quick Start](#quick-start) · [Desktop Guide](#using-the-desktop-app) · [SDKs](#flutter-sdk) · [Support](#support-devconnect)
 
 </div>
 
@@ -1187,11 +1187,96 @@ Or manually: `adb reverse tcp:9090 tcp:9090`
 
 ---
 
+## Using the Desktop App
+
+### Overview
+
+Open DevConnect, run your app with the SDK — data appears automatically. The sidebar shows all features, the bottom bar shows connected devices.
+
+### Tabs & Features
+
+| Tab | What it shows | Key actions |
+|-----|---------------|-------------|
+| **Console** | Real-time logs from your app | Filter by level (debug/info/warn/error), search, click to expand |
+| **Network** | HTTP requests & responses | Filter by method (GET/POST/PUT/PATCH/DELETE), filter by source (App/Library/System), click request to see headers + body + timing |
+| **State** | State changes timeline | Click to see before/after diff, snapshot & restore state |
+| **Storage** | Key/value storage entries | Filter by operation (READ/WRITE/DELETE), filter by type (AS/SP/HV/SQL), click to see full value |
+| **Database** | SQLite tables & queries | Browse tables, view schema, run SQL queries |
+| **Performance** | Real-time FPS, CPU, memory charts | Hover for exact values, jank frames highlighted |
+| **Memory Leaks** | Detected leaks with severity | Sorted by severity (critical/warning/info), stack traces |
+| **Benchmark** | Timing measurements with steps | Start/step/stop lifecycle with duration |
+| **All Events** | Unified timeline across all features | Filter by type, search across everything |
+
+### Toolbar Controls
+
+Every list page has these controls in the toolbar:
+
+- **Filter chips** — Click to filter (single-select for methods, multi-select for types)
+- **Search** — Filter by text content
+- **Auto-scroll** — Pin to newest entries (click to toggle)
+- **Sort direction** — Newest first or oldest first
+- **Clear** — Delete all entries (trash icon)
+
+### Multi-Device
+
+When multiple apps are connected, use the device selector in the bottom bar to filter by device or view "All Devices".
+
+### Settings
+
+- **Server** — Start/stop WebSocket server, change port (default: 9090)
+- **Network IPs** — Your desktop IP addresses (click to copy)
+- **ADB Reverse** — One-click USB setup for Android
+- **Appearance** — Dark/light theme, scroll direction
+- **Tab Visibility** — Show/hide tabs you don't need
+
+---
+
+## Production Safety
+
+All SDKs are **disabled by default in production builds** — zero runtime overhead.
+
+| SDK | Guard | Behavior in production |
+|-----|-------|----------------------|
+| Flutter | `kDebugMode` | Returns immediately, no WebSocket, no interceptors |
+| React Native | `__DEV__` | Creates dummy instance, all methods are no-ops |
+| Android | `BuildConfig.DEBUG` | Returns immediately, nothing initialized |
+
+You can also manually disable:
+
+```dart
+DevConnect.init(appName: 'MyApp', enabled: false);  // Flutter
+```
+
+```typescript
+DevConnect.init({ appName: 'MyApp', enabled: false });  // React Native
+```
+
+```kotlin
+DevConnect.init(context = this, appName = "MyApp", enabled = false)  // Android
+```
+
+**No need to remove SDK code for release builds.** The compiler strips dead code paths automatically.
+
+---
+
 ## Architecture
 
 - **Desktop**: Flutter Desktop (macOS/Windows) + Riverpod + go_router + Freezed
 - **Protocol**: JSON over WebSocket (default port 9090)
 - **SDKs**: Flutter (pub.dev / git), React Native (npm / git), Android (Maven / JitPack / AAR)
+
+---
+
+## Support DevConnect
+
+DevConnect is free and open source. If it saves you debugging time, consider supporting development:
+
+<div align="center">
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/buivietphi)
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white)](https://paypal.me/buivietphi)
+
+</div>
 
 ---
 
@@ -1232,5 +1317,7 @@ MIT - by [buivietphi](https://github.com/buivietphi)
 **DevConnect** — Debug Flutter, React Native & Android apps from one desktop tool.
 
 *A modern alternative to Reactotron, Flipper, and platform-specific debugging tools.*
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/buivietphi) [![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white)](https://paypal.me/buivietphi)
 
 </div>

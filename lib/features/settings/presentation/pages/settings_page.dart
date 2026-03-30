@@ -220,6 +220,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         : 'your-pc-ip',
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                // ── Support / Donate ──
+                _Card(
+                  surface: surface,
+                  border: border,
+                  child: const _DonateSection(),
+                ),
               ],
             ),
           ),
@@ -1320,4 +1328,145 @@ class _NetworkInfo {
     required this.interfaceName,
     required this.type,
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Donate / Support Section
+// ═══════════════════════════════════════════════════════════════════
+
+class _DonateSection extends StatelessWidget {
+  const _DonateSection();
+
+  void _openUrl(String url) {
+    if (Platform.isMacOS) {
+      Process.run('open', [url]);
+    } else if (Platform.isWindows) {
+      Process.run('start', [url], runInShell: true);
+    } else {
+      Process.run('xdg-open', [url]);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(LucideIcons.heart, size: 16, color: ColorTokens.error),
+            const SizedBox(width: 8),
+            Text(
+              'Support DevConnect',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'DevConnect is free and open source. If it helps your workflow, consider supporting development.',
+          style: TextStyle(fontSize: 12, color: Colors.grey[500], height: 1.4),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            _DonateButton(
+              label: 'Ko-fi',
+              icon: LucideIcons.coffee,
+              color: const Color(0xFFFF5E5B),
+              onTap: () => _openUrl('https://ko-fi.com/buivietphi'),
+            ),
+            const SizedBox(width: 10),
+            _DonateButton(
+              label: 'PayPal',
+              icon: LucideIcons.creditCard,
+              color: const Color(0xFF0070BA),
+              onTap: () => _openUrl('https://paypal.me/buivietphi'),
+            ),
+            // const SizedBox(width: 10),
+            // _DonateButton(
+            //   label: 'GitHub Sponsors',
+            //   icon: LucideIcons.github,
+            //   color: isDark ? Colors.white70 : Colors.black87,
+            //   onTap: () => _openUrl('https://github.com/sponsors/buivietphi'),
+            // ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DonateButton extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _DonateButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  State<_DonateButton> createState() => _DonateButtonState();
+}
+
+class _DonateButtonState extends State<_DonateButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: _hovered
+                ? widget.color.withValues(alpha: 0.12)
+                : isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : Colors.black.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: _hovered
+                  ? widget.color.withValues(alpha: 0.3)
+                  : isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.08),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(widget.icon, size: 14, color: widget.color),
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: widget.color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

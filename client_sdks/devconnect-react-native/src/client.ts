@@ -16,7 +16,7 @@ interface DevConnectConfig {
   versionCode?: string;
   /** Desktop IP. undefined/'auto' = auto-detect. '192.168.x.x' = manual */
   host?: string;
-  /** WebSocket port (default: 9091) */
+  /** WebSocket port (default: 9090) */
   port?: number;
   /** Auto-detect host (default: true) */
   auto?: boolean;
@@ -323,7 +323,7 @@ export class DevConnect {
       appVersion: config.appVersion ?? '1.0.0',
       versionCode: config.versionCode ?? undefined,
       host: config.resolvedHost,
-      port: config.port ?? 9091,
+      port: config.port ?? 9090,
       auto: config.auto ?? true,
       enabled: config.enabled ?? true,
       autoInterceptFetch: config.autoInterceptFetch ?? __DEV__,
@@ -369,7 +369,7 @@ export class DevConnect {
       return dc;
     }
 
-    const port = config.port ?? 9091;
+    const port = config.port ?? 9090;
     const shouldAuto = (config.auto ?? true) && (!config.host || config.host === 'auto');
 
     const resolvedHost = shouldAuto

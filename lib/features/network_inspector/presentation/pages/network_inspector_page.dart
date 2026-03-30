@@ -54,10 +54,10 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
       (previous, next) {
         // Network has in-place updates (response arrives for pending request).
         // Always full sync to ensure tiles reflect latest data.
-        final grew = next.length > _entries.length;
+        final changed = next.length != _entries.length;
         _entries..clear()..addAll(next);
         _entryCount.value = _entries.length;
-        if (grew) _visibleCount = _entries.length;
+        if (changed) _visibleCount = _entries.length;
         _generation++;
         setState(() {});
         if (_autoScroll) _autoScrollIfNeeded();
@@ -287,17 +287,23 @@ class _Toolbar extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final methodFilter = ref.watch(networkMethodFilterProvider);
     final sourceFilter = ref.watch(networkSourceFilterProvider);
-    final methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: isDark ? ColorTokens.darkBackground : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.06),
+          ),
+        ),
       ),
       child: Row(
         children: [
-          // Title + count pill
+          // Title + count
           Icon(LucideIcons.globe, size: 16, color: ColorTokens.primary),
           const SizedBox(width: 8),
           Text('Network', style: theme.textTheme.titleMedium),
@@ -322,61 +328,53 @@ class _Toolbar extends ConsumerWidget {
           ),
           const SizedBox(width: 16),
 
-          // Method filter chips
-          ...methods.map((m) {
-            final isActive = methodFilter == m;
-            return Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: GestureDetector(
-                onTap: () {
-                  ref.read(networkMethodFilterProvider.notifier).state =
-                      isActive ? null : m;
-                },
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isActive
-                          ? ColorTokens.httpMethodColor(m)
-                              .withValues(alpha: 0.18)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: isActive
-                            ? ColorTokens.httpMethodColor(m)
-                                .withValues(alpha: 0.5)
-                            : Colors.grey.withValues(alpha: 0.2),
-                        width: 1,
-                      ),
-                    ),
-                    child: Text(
-                      m,
-                      style: TextStyle(
-                        fontFamily: AppConstants.monoFontFamily,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: isActive
-                            ? ColorTokens.httpMethodColor(m)
-                            : Colors.grey,
-                      ),
-                    ),
-                  ),
-                ),
+          // ── Method segment group ──
+          _SegmentGroup(
+            isDark: isDark,
+            children: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) {
+              final isActive = methodFilter == m;
+              final color = ColorTokens.httpMethodColor(m);
+              return _SegmentChip(
+                label: m,
+                isActive: isActive,
+                color: color,
+                isMono: true,
+                onTap: () => ref
+                    .read(networkMethodFilterProvider.notifier)
+                    .state = isActive ? null : m,
+              );
+            }).toList(),
+          ),
+          const SizedBox(width: 10),
+
+          // ── Source segment group ──
+          _SegmentGroup(
+            isDark: isDark,
+            children: [
+              _SegmentChip(
+                label: 'App',
+                isActive: sourceFilter.contains('app'),
+                color: ColorTokens.primary,
+                onTap: () => _toggleSource(ref, 'app'),
               ),
-            );
-          }),
-
-          const SizedBox(width: 8),
-
-          // Source filter chips
-          ..._buildSourceChips(ref, sourceFilter),
+              _SegmentChip(
+                label: 'Library',
+                isActive: sourceFilter.contains('library'),
+                color: ColorTokens.warning,
+                onTap: () => _toggleSource(ref, 'library'),
+              ),
+              _SegmentChip(
+                label: 'System',
+                isActive: sourceFilter.contains('system'),
+                color: Colors.grey,
+                onTap: () => _toggleSource(ref, 'system'),
+              ),
+            ],
+          ),
 
           const Spacer(),
 
-          // Search field
+          // Search
           SizedBox(
             width: 200,
             child: SearchField(
@@ -447,113 +445,116 @@ class _Toolbar extends ConsumerWidget {
     );
   }
 
-  List<Widget> _buildSourceChips(WidgetRef ref, Set<String> sourceFilter) {
-    const sources = [
-      ('App', 'app', ColorTokens.primary),
-      ('Library', 'library', ColorTokens.warning),
-    ];
+  void _toggleSource(WidgetRef ref, String key) {
+    final current = ref.read(networkSourceFilterProvider);
+    if (current.contains(key)) {
+      ref.read(networkSourceFilterProvider.notifier).state =
+          current.difference({key});
+    } else {
+      ref.read(networkSourceFilterProvider.notifier).state = {...current, key};
+    }
+  }
+}
 
-    return [
-      ...sources.map((s) {
-        final (label, key, color) = s;
-        final isActive = sourceFilter.contains(key);
-        return Padding(
-          padding: const EdgeInsets.only(right: 4),
-          child: GestureDetector(
-            onTap: () {
-              final current = ref.read(networkSourceFilterProvider);
-              if (isActive) {
-                ref.read(networkSourceFilterProvider.notifier).state =
-                    current.difference({key});
-              } else {
-                ref.read(networkSourceFilterProvider.notifier).state = {
-                  ...current,
-                  key,
-                };
-              }
-            },
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? color.withValues(alpha: 0.15)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: isActive
-                        ? color.withValues(alpha: 0.4)
-                        : Colors.grey.withValues(alpha: 0.2),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: isActive ? color : Colors.grey,
-                  ),
-                ),
+/// Grouped segment container with shared background — DevTools style.
+class _SegmentGroup extends StatelessWidget {
+  final bool isDark;
+  final List<Widget> children;
+
+  const _SegmentGroup({required this.isDark, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
+    );
+  }
+}
+
+/// Individual segment chip inside a group.
+class _SegmentChip extends StatefulWidget {
+  final String label;
+  final bool isActive;
+  final Color color;
+  final bool isMono;
+  final VoidCallback onTap;
+
+  const _SegmentChip({
+    required this.label,
+    required this.isActive,
+    required this.color,
+    this.isMono = false,
+    required this.onTap,
+  });
+
+  @override
+  State<_SegmentChip> createState() => _SegmentChipState();
+}
+
+class _SegmentChipState extends State<_SegmentChip> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: widget.isActive
+                ? widget.color.withValues(alpha: 0.15)
+                : _hovered
+                    ? (isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : Colors.black.withValues(alpha: 0.04))
+                    : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: widget.isActive
+                ? [
+                    BoxShadow(
+                      color: widget.color.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      spreadRadius: -1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontFamily: widget.isMono ? AppConstants.monoFontFamily : null,
+                fontSize: 10,
+                fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w500,
+                color: widget.isActive
+                    ? widget.color
+                    : isDark
+                        ? Colors.grey[500]
+                        : Colors.grey[600],
+                letterSpacing: widget.isMono ? 0.3 : 0,
               ),
             ),
           ),
-        );
-      }),
-      // System chip (grey)
-      Padding(
-        padding: const EdgeInsets.only(right: 4),
-        child: GestureDetector(
-          onTap: () {
-            final current = ref.read(networkSourceFilterProvider);
-            final isActive = current.contains('system');
-            if (isActive) {
-              ref.read(networkSourceFilterProvider.notifier).state =
-                  current.difference({'system'});
-            } else {
-              ref.read(networkSourceFilterProvider.notifier).state = {
-                ...current,
-                'system',
-              };
-            }
-          },
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: Builder(builder: (context) {
-              final isActive = sourceFilter.contains('system');
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? Colors.grey.withValues(alpha: 0.15)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: isActive
-                        ? Colors.grey.withValues(alpha: 0.4)
-                        : Colors.grey.withValues(alpha: 0.2),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  'System',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: isActive ? Colors.grey[600] : Colors.grey,
-                  ),
-                ),
-              );
-            }),
-          ),
         ),
       ),
-    ];
+    );
   }
 }
 

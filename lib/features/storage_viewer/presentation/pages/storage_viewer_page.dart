@@ -43,10 +43,10 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
       (previous, next) {
         // Storage has in-place updates (value changes for existing key).
         // Always full sync to ensure tiles reflect latest data.
-        final grew = next.length > _entries.length;
+        final changed = next.length != _entries.length;
         _entries..clear()..addAll(next);
         _entryCount.value = _entries.length;
-        if (grew) _visibleCount = _entries.length;
+        if (changed) _visibleCount = _entries.length;
         _generation++;
         setState(() {});
         if (_autoScroll) _autoScrollIfNeeded();
@@ -186,7 +186,7 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
                             controller: _scrollController,
                             reverse: isReversed,
                             physics: isReversed ? const PositionRetainedScrollPhysics() : null,
-                            itemExtent: 44,
+                            itemExtent: 58,
                             childrenDelegate: StableBuilderDelegate(
                               generation: _generation,
                               childCount: _visibleCount,
@@ -261,24 +261,68 @@ class _Toolbar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final opFilter = ref.watch(storageOperationFilterProvider);
+    final typeFilter = ref.watch(storageTypeFilterProvider);
 
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: isDark ? ColorTokens.darkBackground : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.06),
+          ),
+        ),
       ),
       child: Row(
         children: [
+          // Title + count pill
           Icon(LucideIcons.database, size: 16, color: ColorTokens.primary),
           const SizedBox(width: 8),
           Text('Storage', style: theme.textTheme.titleMedium),
           const SizedBox(width: 8),
           ValueListenableBuilder<int>(
             valueListenable: totalCount,
-            builder: (_, c, __) => Text('$c keys', style: theme.textTheme.bodySmall),
+            builder: (_, c, __) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: ColorTokens.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$c',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: ColorTokens.primary,
+                ),
+              ),
+            ),
           ),
+          const SizedBox(width: 16),
+
+          // ── Operation segment group ──
+          _SegmentGroup(isDark: isDark, children: [
+            _SegmentChip(label: 'READ', isActive: opFilter == 'read', color: ColorTokens.info, isMono: true, onTap: () => ref.read(storageOperationFilterProvider.notifier).state = opFilter == 'read' ? null : 'read'),
+            _SegmentChip(label: 'WRITE', isActive: opFilter == 'write', color: ColorTokens.success, isMono: true, onTap: () => ref.read(storageOperationFilterProvider.notifier).state = opFilter == 'write' ? null : 'write'),
+            _SegmentChip(label: 'DELETE', isActive: opFilter == 'delete', color: ColorTokens.error, isMono: true, onTap: () => ref.read(storageOperationFilterProvider.notifier).state = opFilter == 'delete' ? null : 'delete'),
+          ]),
+          const SizedBox(width: 10),
+
+          // ── Type segment group ──
+          _SegmentGroup(isDark: isDark, children: [
+            _SegmentChip(label: 'AS', isActive: typeFilter.contains(StorageType.asyncStorage), color: const Color(0xFF61DAFB), isMono: true, onTap: () => _toggleType(ref, StorageType.asyncStorage)),
+            _SegmentChip(label: 'SP', isActive: typeFilter.contains(StorageType.sharedPreferences), color: const Color(0xFF3DDC84), isMono: true, onTap: () => _toggleType(ref, StorageType.sharedPreferences)),
+            _SegmentChip(label: 'HV', isActive: typeFilter.contains(StorageType.hive), color: const Color(0xFFFFC107), isMono: true, onTap: () => _toggleType(ref, StorageType.hive)),
+            _SegmentChip(label: 'SQL', isActive: typeFilter.contains(StorageType.sqlite), color: const Color(0xFF003B57), isMono: true, onTap: () => _toggleType(ref, StorageType.sqlite)),
+          ]),
+
           const Spacer(),
+
+          // Search field
           SizedBox(
             width: 200,
             child: SearchField(
@@ -288,6 +332,8 @@ class _Toolbar extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 12),
+
+          // Action group
           Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
@@ -342,6 +388,116 @@ class _Toolbar extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _toggleType(WidgetRef ref, StorageType type) {
+    final current = ref.read(storageTypeFilterProvider);
+    if (current.contains(type)) {
+      ref.read(storageTypeFilterProvider.notifier).state =
+          current.difference({type});
+    } else {
+      ref.read(storageTypeFilterProvider.notifier).state = {...current, type};
+    }
+  }
+}
+
+class _SegmentGroup extends StatelessWidget {
+  final bool isDark;
+  final List<Widget> children;
+
+  const _SegmentGroup({required this.isDark, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
+    );
+  }
+}
+
+class _SegmentChip extends StatefulWidget {
+  final String label;
+  final bool isActive;
+  final Color color;
+  final bool isMono;
+  final VoidCallback onTap;
+
+  const _SegmentChip({
+    required this.label,
+    required this.isActive,
+    required this.color,
+    this.isMono = false,
+    required this.onTap,
+  });
+
+  @override
+  State<_SegmentChip> createState() => _SegmentChipState();
+}
+
+class _SegmentChipState extends State<_SegmentChip> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: widget.isActive
+                ? widget.color.withValues(alpha: 0.15)
+                : _hovered
+                    ? (isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : Colors.black.withValues(alpha: 0.04))
+                    : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: widget.isActive
+                ? [
+                    BoxShadow(
+                      color: widget.color.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      spreadRadius: -1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontFamily: widget.isMono ? AppConstants.monoFontFamily : null,
+                fontSize: 10,
+                fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w500,
+                color: widget.isActive
+                    ? widget.color
+                    : isDark
+                        ? Colors.grey[500]
+                        : Colors.grey[600],
+                letterSpacing: widget.isMono ? 0.3 : 0,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -455,6 +611,17 @@ class _StorageEntryTile extends StatelessWidget {
     }
   }
 
+  String _valuePreview() {
+    final v = entry.value;
+    if (v == null) return 'null';
+    if (v is Map || v is List) {
+      final s = jsonEncode(v);
+      return s.length > 80 ? '${s.substring(0, 80)}...' : s;
+    }
+    final s = v.toString();
+    return s.length > 80 ? '${s.substring(0, 80)}...' : s;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -469,7 +636,7 @@ class _StorageEntryTile extends StatelessWidget {
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: Container(
-          height: 44,
+          height: 58,
           padding: const EdgeInsets.only(right: 14),
           decoration: BoxDecoration(
             color: isSelected
@@ -545,19 +712,37 @@ class _StorageEntryTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              // Key name
+              // Key + value preview
               Expanded(
-                child: Text(
-                  entry.key,
-                  style: TextStyle(
-                    fontFamily: AppConstants.monoFontFamily,
-                    fontSize: 12,
-                    color: isDark
-                        ? ColorTokens.lightBackground
-                        : ColorTokens.darkNeutral,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.key,
+                      style: TextStyle(
+                        fontFamily: AppConstants.monoFontFamily,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isDark
+                            ? ColorTokens.lightBackground
+                            : ColorTokens.darkNeutral,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _valuePreview(),
+                      style: TextStyle(
+                        fontFamily: AppConstants.monoFontFamily,
+                        fontSize: 10,
+                        color: Colors.grey[500],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
             ],

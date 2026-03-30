@@ -120,7 +120,7 @@ class DevConnectClient {
   /// 3. Real device -> tries localhost, then common gateway IPs
   static Future<DevConnectClient> init({
     String? host,
-    int port = 9091,
+    int port = 9090,
     required String appName,
     String appVersion = '1.0.0',
     String? versionCode,

@@ -16,14 +16,30 @@ final storageEntriesProvider =
 
 final storageSearchProvider = StateProvider<String>((ref) => '');
 
+/// Single-select operation filter (null = show all).
+final storageOperationFilterProvider = StateProvider<String?>((ref) => null);
+
+/// Multi-select storage type filter (all enabled by default).
+final storageTypeFilterProvider = StateProvider<Set<StorageType>>(
+  (ref) => StorageType.values.toSet(),
+);
+
 final filteredStorageEntriesProvider = Provider<List<StorageEntry>>((ref) {
   final entries = ref.watch(storageEntriesProvider);
   final search = ref.watch(storageSearchProvider).toLowerCase();
   final selectedDevice = ref.watch(selectedDeviceProvider);
+  final opFilter = ref.watch(storageOperationFilterProvider);
+  final typeFilter = ref.watch(storageTypeFilterProvider);
 
   return entries.where((e) {
     if (selectedDevice == null) return false;
-    if (selectedDevice != allDevicesValue && e.deviceId != selectedDevice) return false;
+    if (selectedDevice != allDevicesValue && e.deviceId != selectedDevice) {
+      return false;
+    }
+    if (opFilter != null && e.operation.toLowerCase() != opFilter) {
+      return false;
+    }
+    if (!typeFilter.contains(e.storageType)) return false;
     if (search.isNotEmpty) {
       return e.key.toLowerCase().contains(search) ||
           (e.value?.toString().toLowerCase().contains(search) ?? false);
