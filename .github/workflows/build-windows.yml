@@ -9,11 +9,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: master
-          cache: true
+      - name: Clone Flutter master at specific commit
+        run: |
+          git clone https://github.com/flutter/flutter.git --branch master --single-branch C:\flutter
+          cd C:\flutter
+          git checkout 221f7eb265
+        shell: pwsh
 
+      - name: Add Flutter to PATH
+        run: echo "C:\flutter\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+        shell: pwsh
+
+      - run: flutter doctor -v
       - run: flutter pub get
       - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter build windows --release
@@ -24,8 +31,8 @@ jobs:
           Compress-Archive -Path * -DestinationPath DevConnectManageTool-Windows-v1.0.0.zip
         shell: pwsh
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DevConnectManageTool-Windows-v1.0.0
-          path: build/windows/x64/runner/Release/DevConnectManageTool-Windows-v1.0.0.zip
+      - name: Upload to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload v1.0.0 build/windows/x64/runner/Release/DevConnectManageTool-Windows-v1.0.0.zip --repo ${{ github.repository }} --clobber
+        shell: pwsh
