@@ -8,8 +8,10 @@ import com.devconnect.interceptors.OkHttpInterceptor
 import com.devconnect.reporters.DataStoreReporter
 import com.devconnect.reporters.LogReporter
 import com.devconnect.reporters.MmkvReporter
+import com.devconnect.reporters.ObjectBoxReporter
 import com.devconnect.reporters.RealmReporter
 import com.devconnect.reporters.RoomReporter
+import com.devconnect.reporters.SQLDelightReporter
 import com.devconnect.reporters.DevConnectStateObserver
 import com.devconnect.reporters.SharedPrefsReporter
 import org.json.JSONObject
@@ -598,6 +600,10 @@ object DevConnect {
      * ```
      */
     fun realmReporter(): RealmReporter = RealmReporter()
+
+    fun objectBoxReporter(): ObjectBoxReporter = ObjectBoxReporter()
+
+    fun sqlDelightReporter(): SQLDelightReporter = SQLDelightReporter()
 
     /**
      * Get an MMKV storage reporter.

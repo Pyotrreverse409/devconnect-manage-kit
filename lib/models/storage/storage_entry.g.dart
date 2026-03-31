@@ -34,6 +34,14 @@ const _$StorageTypeEnumMap = {
   StorageType.hive: 'hive',
   StorageType.sqlite: 'sqlite',
   StorageType.realm: 'realm',
+  StorageType.objectbox: 'objectbox',
+  StorageType.floor: 'floor',
+  StorageType.sembast: 'sembast',
+  StorageType.sqflite: 'sqflite',
+  StorageType.watermelondb: 'watermelondb',
+  StorageType.encryptedStorage: 'encryptedStorage',
+  StorageType.sqldelight: 'sqldelight',
+  StorageType.mmkv: 'mmkv',
 };
 
 _DatabaseSchema _$DatabaseSchemaFromJson(Map<String, dynamic> json) =>

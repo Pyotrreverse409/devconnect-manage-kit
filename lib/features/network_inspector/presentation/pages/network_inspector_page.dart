@@ -54,10 +54,11 @@ class _NetworkInspectorPageState extends ConsumerState<NetworkInspectorPage> {
       (previous, next) {
         // Network has in-place updates (response arrives for pending request).
         // Always full sync to ensure tiles reflect latest data.
-        final changed = next.length != _entries.length;
+        final grew = next.length > _entries.length;
+        final shrunk = next.length < _entries.length;
         _entries..clear()..addAll(next);
         _entryCount.value = _entries.length;
-        if (changed) _visibleCount = _entries.length;
+        if (grew || shrunk || _autoScroll) _visibleCount = _entries.length;
         _generation++;
         setState(() {});
         if (_autoScroll) _autoScrollIfNeeded();
@@ -2217,11 +2218,15 @@ class _HeaderRowWithCopyState extends State<_HeaderRowWithCopy> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(
-                  widget.headerValue,
-                  style: valueStyle,
-                  maxLines: _expanded ? null : _maxCollapsedLines,
-                ),
+                if (_expanded)
+                  SelectableText(widget.headerValue, style: valueStyle)
+                else
+                  Text(
+                    widget.headerValue,
+                    style: valueStyle,
+                    maxLines: _maxCollapsedLines,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 if (_isLong)
                   GestureDetector(
                     onTap: () => setState(() => _expanded = !_expanded),

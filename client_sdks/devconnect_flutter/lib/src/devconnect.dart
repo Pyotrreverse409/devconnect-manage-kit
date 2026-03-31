@@ -330,6 +330,38 @@ class DevConnect {
     return const DevConnectStorage(storageType: 'hive');
   }
 
+  /// Reporter for Realm database operations.
+  ///
+  /// ```dart
+  /// final reporter = DevConnect.realmReporter();
+  /// reporter.reportWrite('User', {'name': 'John', 'age': 25});
+  /// reporter.reportRead('User', results);
+  /// reporter.reportDelete('User');
+  /// ```
+  static DevConnectStorage realmReporter() {
+    return const DevConnectStorage(storageType: 'realm');
+  }
+
+  /// Reporter for ObjectBox database operations.
+  static DevConnectStorage objectBoxReporter() {
+    return const DevConnectStorage(storageType: 'objectbox');
+  }
+
+  /// Reporter for Floor database operations (ORM on SQLite).
+  static DevConnectStorage floorReporter() {
+    return const DevConnectStorage(storageType: 'floor');
+  }
+
+  /// Reporter for Sembast NoSQL database operations.
+  static DevConnectStorage sembastReporter() {
+    return const DevConnectStorage(storageType: 'sembast');
+  }
+
+  /// Reporter for sqflite database operations.
+  static DevConnectStorage sqfliteReporter() {
+    return const DevConnectStorage(storageType: 'sqflite');
+  }
+
   /// Reporter for flutter_secure_storage read/write/delete operations.
   ///
   /// Values are masked by default for security.

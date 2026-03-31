@@ -29,12 +29,23 @@ await DevConnect.init({ appName: 'MyApp' });
 await DevConnect.init({
   appName: 'MyApp',
   appVersion: '1.0.0',
-  host: undefined,            // undefined = auto-detect
-  port: 9090,                 // default: 9090
-  enabled: __DEV__,           // false in production
-  autoInterceptFetch: true,
-  autoInterceptXHR: true,
-  autoInterceptConsole: true,
+  host: undefined,              // undefined = auto-detect, '192.168.1.5' = manual
+  port: 9090,                   // default: 9090
+  enabled: __DEV__,             // false in production
+  autoInterceptFetch: true,     // true = auto-capture all fetch requests
+  autoInterceptXHR: true,       // true = auto-capture all XHR requests
+  autoInterceptConsole: true,   // true = auto-capture console.log/warn/error
+});
+```
+
+Disable specific auto-intercepts if you want manual control:
+
+```typescript
+await DevConnect.init({
+  appName: 'MyApp',
+  autoInterceptFetch: false,    // disable auto — use manual reportNetworkStart/Complete
+  autoInterceptXHR: false,      // disable auto
+  autoInterceptConsole: false,  // disable auto — use DevConnect.log/warn/error manually
 });
 ```
 
@@ -91,14 +102,105 @@ const useStore = create(
 
 ### Storage
 
+Supports: AsyncStorage, MMKV, Encrypted Storage, WatermelonDB, SQLite, Realm.
+
+Each library has 2 options: **auto** (wrap once, everything reported) or **manual** (you control what gets reported). Choose per library.
+
+#### AsyncStorage
+
 ```typescript
-// AsyncStorage
+// Option 1: Auto — patch once, all getItem/setItem/removeItem auto-reported
 import { DevConnectAsyncStorage } from 'devconnect-manage-kit';
 DevConnectAsyncStorage.patchInPlace(AsyncStorage);
+await AsyncStorage.setItem('token', 'abc');  // auto-reported
+await AsyncStorage.getItem('token');          // auto-reported
 
-// MMKV
+// Option 2: Manual — don't patch, report only what you want
+import { DevConnectStorage } from 'devconnect-manage-kit';
+const storage = new DevConnectStorage('async_storage');
+await AsyncStorage.setItem('token', 'abc');
+storage.reportWrite('token', 'abc');          // only this gets reported
+```
+
+#### MMKV
+
+```typescript
+// Option 1: Auto
 import { DevConnectMMKV } from 'devconnect-manage-kit';
 DevConnectMMKV.wrap(storage);
+storage.set('token', 'abc');  // auto-reported
+
+// Option 2: Manual
+import { DevConnectStorage } from 'devconnect-manage-kit';
+const mmkvReporter = new DevConnectStorage('mmkv');
+storage.set('token', 'abc');
+mmkvReporter.reportWrite('token', 'abc');
+```
+
+#### Encrypted Storage
+
+```typescript
+// Option 1: Auto (values masked as ***)
+import { DevConnectEncryptedStorage } from 'devconnect-manage-kit';
+DevConnectEncryptedStorage.patchInPlace(EncryptedStorage);
+await EncryptedStorage.setItem('token', 'secret');  // auto-reported as ***
+
+// Option 2: Manual — control what value is shown
+import { DevConnectStorage } from 'devconnect-manage-kit';
+const encReporter = new DevConnectStorage('encrypted_storage');
+await EncryptedStorage.setItem('token', 'secret');
+encReporter.reportWrite('token', '<hidden>');  // you choose what to show
+```
+
+#### WatermelonDB (manual only)
+
+```typescript
+import { DevConnectWatermelon } from 'devconnect-manage-kit';
+const watermelon = new DevConnectWatermelon();
+
+const posts = await postsCollection.query().fetch();
+watermelon.reportQuery('Post', posts.length);
+
+await database.write(async () => {
+  await postsCollection.create(post => { post.title = 'Hello'; });
+});
+watermelon.reportWrite('Post', { title: 'Hello' });
+```
+
+#### SQLite (manual only)
+
+```typescript
+import { DevConnectSQLite } from 'devconnect-manage-kit';
+const sqlite = new DevConnectSQLite();
+
+const results = await db.executeSql('SELECT * FROM users');
+sqlite.reportQuery('SELECT * FROM users', results[0].rows.raw());
+
+await db.executeSql('INSERT INTO users (name) VALUES (?)', ['John']);
+sqlite.reportExecute('INSERT INTO users (name) VALUES (?)', { name: 'John' });
+```
+
+#### Realm (manual only)
+
+```typescript
+import { DevConnectRealm } from 'devconnect-manage-kit';
+const realm = new DevConnectRealm();
+
+const users = realmInstance.objects('User');
+realm.reportQuery('User', users.length);
+
+realmInstance.write(() => { realmInstance.create('User', { name: 'John' }); });
+realm.reportWrite('User', { name: 'John' });
+```
+
+#### Generic (any key-value store)
+
+```typescript
+import { DevConnectStorage } from 'devconnect-manage-kit';
+const custom = new DevConnectStorage('my_custom_store');
+custom.reportWrite('key', 'value');
+custom.reportRead('key', 'value');
+custom.reportDelete('key');
 ```
 
 ### Performance
@@ -143,4 +245,4 @@ DevConnect.init({ appName: 'MyApp', enabled: false });
 
 ## License
 
-MIT
+MIT - by [ridelinktechs](https://github.com/ridelinktechs)

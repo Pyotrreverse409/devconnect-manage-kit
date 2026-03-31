@@ -1318,7 +1318,7 @@ Looking for mobile debugging tools? Here's how DevConnect compares:
 
 ## License
 
-MIT - by [buivietphi](https://github.com/buivietphi)
+MIT - by [ridelinktechs](https://github.com/ridelinktechs)
 
 ---
 

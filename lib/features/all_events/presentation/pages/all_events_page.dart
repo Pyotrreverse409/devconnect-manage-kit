@@ -60,22 +60,12 @@ class _AllEventsPageState extends ConsumerState<AllEventsPage> {
     ref.listenManual(
       filteredAllEventsProvider,
       (previous, next) {
-        final prevLen = _events.length;
-        if (next.length > prevLen && previous != null && next.length - prevLen == next.length - previous.length) {
-          _events.addAll(next.sublist(prevLen));
-          _eventCount.value = _events.length;
-          if (!_autoScroll) return;
-          _visibleCount = _events.length;
-          setState(() {});
-          _autoScrollIfNeeded();
-        } else {
-          _events..clear()..addAll(next);
-          _eventCount.value = _events.length;
-          _visibleCount = _events.length;
-          _generation++;
-          setState(() {});
-          if (_autoScroll) _autoScrollIfNeeded();
-        }
+        _events..clear()..addAll(next);
+        _eventCount.value = _events.length;
+        _visibleCount = _events.length;
+        _generation++;
+        setState(() {});
+        if (_autoScroll) _autoScrollIfNeeded();
       },
       fireImmediately: true,
     );
@@ -1798,11 +1788,11 @@ class _EventDetailPanelState extends State<_EventDetailPanel> {
             children: [
               const _SectionLabel('REQUEST HEADERS'),
               const SizedBox(height: 8),
-              _HeaderTable(headers: entry.requestHeaders),
+              _HeaderTable(headers: entry.requestHeaders, isScreenshot: true),
               const SizedBox(height: 20),
               const _SectionLabel('RESPONSE HEADERS'),
               const SizedBox(height: 8),
-              _HeaderTable(headers: entry.responseHeaders),
+              _HeaderTable(headers: entry.responseHeaders, isScreenshot: true),
             ],
           ),
         ),
@@ -2143,11 +2133,11 @@ class _EventDetailPanelState extends State<_EventDetailPanel> {
               children: [
                 const _SectionLabel('Request Headers'),
                 const SizedBox(height: 8),
-                _HeaderTable(headers: entry.requestHeaders),
+                _HeaderTable(headers: entry.requestHeaders, isScreenshot: true),
                 const SizedBox(height: 20),
                 const _SectionLabel('Response Headers'),
                 const SizedBox(height: 8),
-                _HeaderTable(headers: entry.responseHeaders),
+                _HeaderTable(headers: entry.responseHeaders, isScreenshot: true),
               ],
             ),
           );
@@ -3108,8 +3098,9 @@ class _HeaderSection extends StatelessWidget {
 
 class _HeaderTable extends StatelessWidget {
   final Map<String, String> headers;
+  final bool isScreenshot;
 
-  const _HeaderTable({required this.headers});
+  const _HeaderTable({required this.headers, this.isScreenshot = false});
 
   @override
   Widget build(BuildContext context) {
@@ -3121,6 +3112,36 @@ class _HeaderTable extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: headers.entries.map((e) {
+        if (isScreenshot) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 170,
+                  child: Text(e.key,
+                      style: TextStyle(
+                          fontFamily: AppConstants.monoFontFamily,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? const Color(0xFF9CDCFE)
+                              : const Color(0xFF0451A5))),
+                ),
+                Expanded(
+                  child: Text(e.value,
+                      style: TextStyle(
+                          fontFamily: AppConstants.monoFontFamily,
+                          fontSize: 11,
+                          color: isDark
+                              ? const Color(0xFFCE9178)
+                              : const Color(0xFFA31515))),
+                ),
+              ],
+            ),
+          );
+        }
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: _HeaderRowCopy(
@@ -3193,11 +3214,15 @@ class _HeaderRowCopyState extends State<_HeaderRowCopy> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(
-                  widget.headerValue,
-                  style: valueStyle,
-                  maxLines: _expanded ? null : _maxCollapsedLines,
-                ),
+                if (_expanded)
+                  SelectableText(widget.headerValue, style: valueStyle)
+                else
+                  Text(
+                    widget.headerValue,
+                    style: valueStyle,
+                    maxLines: _maxCollapsedLines,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 if (_isLong)
                   GestureDetector(
                     onTap: () => setState(() => _expanded = !_expanded),

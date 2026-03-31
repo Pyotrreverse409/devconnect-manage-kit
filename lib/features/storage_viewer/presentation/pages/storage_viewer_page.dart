@@ -43,10 +43,11 @@ class _StorageViewerPageState extends ConsumerState<StorageViewerPage> {
       (previous, next) {
         // Storage has in-place updates (value changes for existing key).
         // Always full sync to ensure tiles reflect latest data.
-        final changed = next.length != _entries.length;
+        final grew = next.length > _entries.length;
+        final shrunk = next.length < _entries.length;
         _entries..clear()..addAll(next);
         _entryCount.value = _entries.length;
-        if (changed) _visibleCount = _entries.length;
+        if (grew || shrunk || _autoScroll) _visibleCount = _entries.length;
         _generation++;
         setState(() {});
         if (_autoScroll) _autoScrollIfNeeded();
@@ -592,6 +593,14 @@ class _StorageEntryTile extends StatelessWidget {
       case StorageType.hive: return const Color(0xFFFFC107);
       case StorageType.sqlite: return const Color(0xFF003B57);
       case StorageType.realm: return const Color(0xFF39477F);
+      case StorageType.objectbox: return const Color(0xFF00C853);
+      case StorageType.floor: return const Color(0xFF607D8B);
+      case StorageType.sembast: return const Color(0xFF8D6E63);
+      case StorageType.sqflite: return const Color(0xFF1565C0);
+      case StorageType.watermelondb: return const Color(0xFF4CAF50);
+      case StorageType.encryptedStorage: return const Color(0xFFE91E63);
+      case StorageType.sqldelight: return const Color(0xFF0288D1);
+      case StorageType.mmkv: return const Color(0xFFFF6F00);
     }
   }
 
@@ -602,6 +611,14 @@ class _StorageEntryTile extends StatelessWidget {
       case StorageType.hive: return 'HV';
       case StorageType.sqlite: return 'SQL';
       case StorageType.realm: return 'RLM';
+      case StorageType.objectbox: return 'OBX';
+      case StorageType.floor: return 'FLR';
+      case StorageType.sembast: return 'SMB';
+      case StorageType.sqflite: return 'SQF';
+      case StorageType.watermelondb: return 'WDB';
+      case StorageType.encryptedStorage: return 'ENC';
+      case StorageType.sqldelight: return 'SDL';
+      case StorageType.mmkv: return 'MKV';
     }
   }
 

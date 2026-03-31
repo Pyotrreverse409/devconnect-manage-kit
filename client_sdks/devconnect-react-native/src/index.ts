@@ -10,6 +10,10 @@ export { devConnectXStateInspector, devConnectXStateService } from './intercepto
 export { DevConnectLogger } from './reporters/logReporter';
 export { DevConnectStorage } from './reporters/storageReporter';
 export { DevConnectMMKV } from './reporters/mmkvReporter';
+export { DevConnectEncryptedStorage } from './reporters/encryptedStorageReporter';
+export { DevConnectWatermelon } from './reporters/watermelonReporter';
+export { DevConnectSQLite } from './reporters/sqliteReporter';
+export { DevConnectRealm } from './reporters/realmReporter';
 
 // Auto-monitoring plugins
 export { startPerformanceMonitor, stopPerformanceMonitor } from './plugins/performanceMonitor';
