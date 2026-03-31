@@ -318,6 +318,7 @@ class _Toolbar extends ConsumerWidget {
             _SegmentChip(label: 'SP', isActive: typeFilter.contains(StorageType.sharedPreferences), color: const Color(0xFF3DDC84), isMono: true, onTap: () => _toggleType(ref, StorageType.sharedPreferences)),
             _SegmentChip(label: 'HV', isActive: typeFilter.contains(StorageType.hive), color: const Color(0xFFFFC107), isMono: true, onTap: () => _toggleType(ref, StorageType.hive)),
             _SegmentChip(label: 'SQL', isActive: typeFilter.contains(StorageType.sqlite), color: const Color(0xFF003B57), isMono: true, onTap: () => _toggleType(ref, StorageType.sqlite)),
+            _SegmentChip(label: 'RLM', isActive: typeFilter.contains(StorageType.realm), color: const Color(0xFF39477F), isMono: true, onTap: () => _toggleType(ref, StorageType.realm)),
           ]),
 
           const Spacer(),
@@ -590,6 +591,7 @@ class _StorageEntryTile extends StatelessWidget {
       case StorageType.sharedPreferences: return const Color(0xFF3DDC84);
       case StorageType.hive: return const Color(0xFFFFC107);
       case StorageType.sqlite: return const Color(0xFF003B57);
+      case StorageType.realm: return const Color(0xFF39477F);
     }
   }
 
@@ -599,6 +601,7 @@ class _StorageEntryTile extends StatelessWidget {
       case StorageType.sharedPreferences: return 'SP';
       case StorageType.hive: return 'HV';
       case StorageType.sqlite: return 'SQL';
+      case StorageType.realm: return 'RLM';
     }
   }
 

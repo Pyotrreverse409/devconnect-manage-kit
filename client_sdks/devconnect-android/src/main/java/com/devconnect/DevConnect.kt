@@ -8,6 +8,7 @@ import com.devconnect.interceptors.OkHttpInterceptor
 import com.devconnect.reporters.DataStoreReporter
 import com.devconnect.reporters.LogReporter
 import com.devconnect.reporters.MmkvReporter
+import com.devconnect.reporters.RealmReporter
 import com.devconnect.reporters.RoomReporter
 import com.devconnect.reporters.DevConnectStateObserver
 import com.devconnect.reporters.SharedPrefsReporter
@@ -585,6 +586,18 @@ object DevConnect {
      * ```
      */
     fun roomReporter(): RoomReporter = RoomReporter()
+
+    /**
+     * Get a Realm database reporter.
+     *
+     * ```kotlin
+     * val reporter = DevConnect.realmReporter()
+     * reporter.reportQuery("User", results.map { mapOf("name" to it.name) })
+     * reporter.reportWrite("User", mapOf("name" to user.name))
+     * reporter.reportDelete("User", mapOf("id" to user.id))
+     * ```
+     */
+    fun realmReporter(): RealmReporter = RealmReporter()
 
     /**
      * Get an MMKV storage reporter.

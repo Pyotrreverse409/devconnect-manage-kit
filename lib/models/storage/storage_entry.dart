@@ -3,7 +3,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'storage_entry.freezed.dart';
 part 'storage_entry.g.dart';
 
-enum StorageType { asyncStorage, sharedPreferences, hive, sqlite }
+enum StorageType { asyncStorage, sharedPreferences, hive, sqlite, realm }
 
 @freezed
 abstract class StorageEntry with _$StorageEntry {

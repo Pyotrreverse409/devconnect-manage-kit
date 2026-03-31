@@ -2785,17 +2785,21 @@ class _NetworkDetailState extends State<_NetworkDetail>
                       const SizedBox(width: 8),
                     ],
                     Expanded(
-                      child: Text(
-                        entry.url,
-                        style: TextStyle(
-                          fontFamily: AppConstants.monoFontFamily,
-                          fontSize: 11,
-                          color: isDark
-                              ? ColorTokens.lightBackground
-                              : Colors.black87,
+                      child: Tooltip(
+                        message: entry.url,
+                        waitDuration: const Duration(milliseconds: 300),
+                        child: Text(
+                          entry.url,
+                          style: TextStyle(
+                            fontFamily: AppConstants.monoFontFamily,
+                            fontSize: 11,
+                            color: isDark
+                                ? ColorTokens.lightBackground
+                                : Colors.black87,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -3148,9 +3152,23 @@ class _HeaderRowCopy extends StatefulWidget {
 class _HeaderRowCopyState extends State<_HeaderRowCopy> {
   bool _hovered = false;
   bool _copied = false;
+  bool _expanded = false;
+
+  static const _maxCollapsedLines = 4;
+
+  bool get _isLong => '\n'.allMatches(widget.headerValue).length >= _maxCollapsedLines ||
+      widget.headerValue.length > 200;
 
   @override
   Widget build(BuildContext context) {
+    final valueStyle = TextStyle(
+      fontFamily: AppConstants.monoFontFamily,
+      fontSize: 11,
+      color: widget.isDark
+          ? const Color(0xFFCE9178)
+          : const Color(0xFFA31515),
+    );
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() { _hovered = false; _copied = false; }),
@@ -3172,15 +3190,33 @@ class _HeaderRowCopyState extends State<_HeaderRowCopy> {
             ),
           ),
           Expanded(
-            child: SelectableText(
-              widget.headerValue,
-              style: TextStyle(
-                fontFamily: AppConstants.monoFontFamily,
-                fontSize: 11,
-                color: widget.isDark
-                    ? const Color(0xFFCE9178)
-                    : const Color(0xFFA31515),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(
+                  widget.headerValue,
+                  style: valueStyle,
+                  maxLines: _expanded ? null : _maxCollapsedLines,
+                ),
+                if (_isLong)
+                  GestureDetector(
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          _expanded ? 'Collapse' : 'Show more',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: ColorTokens.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           if (_hovered)

@@ -36,10 +36,10 @@
     "url": "https://github.com/ridelinktechs/devconnect/issues"
   },
   "peerDependencies": {
-    "react-native": ">=0.60.0"
+    "react-native": ">=0.68.2"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
-    "@types/react-native": ">=0.60.0"
+    "@types/react-native": ">=0.68.0"
   }
 }
