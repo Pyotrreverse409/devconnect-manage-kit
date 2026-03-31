@@ -31,9 +31,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _portController = TextEditingController(
-      text: '${AppConstants.defaultPort}',
-    );
+    final server = ref.read(wsServerProvider);
+    final actualPort = server.isRunning ? server.port : AppConstants.defaultPort;
+    _portController = TextEditingController(text: '$actualPort');
     _loadNetworkInfo();
   }
 

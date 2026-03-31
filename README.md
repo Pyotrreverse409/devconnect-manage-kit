@@ -64,13 +64,23 @@ If you've used **Reactotron**, **Flipper**, or **Flutter DevTools** — you know
 - **Auto-detect** — SDK auto-discovers desktop IP, zero configuration needed
 - **Dual Theme** — Dark and light mode
 
-<!-- TODO: Add screenshots
 ### Screenshots
 
-| Dark Theme | Light Theme |
+| All Events | State Inspector |
 |---|---|
-| ![dark](docs/screenshots/dark.png) | ![light](docs/screenshots/light.png) |
--->
+| ![All Events](docs/screenshots/all-events.png) | ![State Detail](docs/screenshots/state-detail.png) |
+
+| Network Inspector | Network Detail |
+|---|---|
+| ![Network List](docs/screenshots/network-list.png) | ![Network Detail](docs/screenshots/network-detail.png) |
+
+| Performance Profiler | Benchmark |
+|---|---|
+| ![Performance](docs/screenshots/performance.png) | ![Benchmark](docs/screenshots/benchmark.png) |
+
+| Storage Viewer |
+|---|
+| ![Storage](docs/screenshots/storage.png) |
 
 ---
 

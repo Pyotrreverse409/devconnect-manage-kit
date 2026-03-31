@@ -9,29 +9,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Clone Flutter master at specific commit
-        run: |
-          git clone https://github.com/flutter/flutter.git --branch master --single-branch C:\flutter
-          cd C:\flutter
-          git checkout 221f7eb265
-        shell: pwsh
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: master
 
-      - name: Add Flutter to PATH
-        run: echo "C:\flutter\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-        shell: pwsh
-
-      - run: flutter doctor -v
       - run: flutter pub get
       - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter build windows --release
 
-      - name: Create Application ZIP (full folder with DLLs)
+      - name: Create Application ZIP
         run: |
           cd build\windows\x64\runner\Release
           Compress-Archive -Path * -DestinationPath DevConnectManageTool-Windows-v1.0.0.zip
         shell: pwsh
 
-      - name: Copy EXE standalone
+      - name: Copy EXE
         run: |
           copy build\windows\x64\runner\Release\devconnect_manage_tool.exe build\windows\x64\runner\Release\DevConnectManageTool-Windows-v1.0.0.exe
         shell: pwsh
