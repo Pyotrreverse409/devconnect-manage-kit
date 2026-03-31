@@ -175,7 +175,9 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
   }
 
   // Clean stale cache entries
-  if (_eventCache.length > usedIds.length + 100) {
+  if (usedIds.isEmpty) {
+    _eventCache.clear();
+  } else if (_eventCache.length > usedIds.length + 100) {
     _eventCache.removeWhere((id, _) => !usedIds.contains(id));
   }
 
