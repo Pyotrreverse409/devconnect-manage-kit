@@ -53,6 +53,17 @@ bool _isSystemUrl(String url) {
   return _systemUrlPatterns.any((p) => lower.contains(p));
 }
 
+/// Cache to reuse UnifiedEvent objects when source data hasn't changed.
+final _eventCache = <String, UnifiedEvent>{};
+
+UnifiedEvent _cached(String id, dynamic rawData, UnifiedEvent Function() create) {
+  final cached = _eventCache[id];
+  if (cached != null && identical(cached.rawData, rawData)) return cached;
+  final ev = create();
+  _eventCache[id] = ev;
+  return ev;
+}
+
 final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
   final enabledTabs = ref.watch(tabVisibilityProvider);
   final logs = ref.watch(consoleEntriesProvider);
@@ -63,10 +74,11 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
   final asyncOps = ref.watch(asyncOperationEntriesProvider);
 
   final events = <UnifiedEvent>[];
+  final usedIds = <String>{};
 
   if (enabledTabs.contains(TabKey.console)) {
     for (final log in logs) {
-      events.add(UnifiedEvent(
+      events.add(_cached(log.id, log, () => UnifiedEvent(
         type: EventType.log,
         id: log.id,
         deviceId: log.deviceId,
@@ -75,14 +87,15 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
         subtitle: log.tag ?? 'log',
         level: log.level.name,
         rawData: log,
-      ));
+      )));
+      usedIds.add(log.id);
     }
   }
 
   if (enabledTabs.contains(TabKey.network)) {
     for (final req in network) {
       if (_isSystemUrl(req.url)) continue;
-      events.add(UnifiedEvent(
+      events.add(_cached(req.id, req, () => UnifiedEvent(
         type: EventType.network,
         id: req.id,
         deviceId: req.deviceId,
@@ -95,13 +108,14 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
             ? (req.statusCode <= 0 || req.statusCode >= 400 ? 'error' : 'info')
             : 'debug',
         rawData: req,
-      ));
+      )));
+      usedIds.add(req.id);
     }
   }
 
   if (enabledTabs.contains(TabKey.state)) {
     for (final sc in stateChanges) {
-      events.add(UnifiedEvent(
+      events.add(_cached(sc.id, sc, () => UnifiedEvent(
         type: EventType.state,
         id: sc.id,
         deviceId: sc.deviceId,
@@ -110,13 +124,14 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
         subtitle: '${sc.stateManagerType} - ${sc.diff.length} changes',
         level: 'info',
         rawData: sc,
-      ));
+      )));
+      usedIds.add(sc.id);
     }
   }
 
   if (enabledTabs.contains(TabKey.storage)) {
     for (final st in storage) {
-      events.add(UnifiedEvent(
+      events.add(_cached(st.id, st, () => UnifiedEvent(
         type: EventType.storage,
         id: st.id,
         deviceId: st.deviceId,
@@ -125,12 +140,13 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
         subtitle: st.storageType.name,
         level: st.operation == 'delete' ? 'warn' : 'info',
         rawData: st,
-      ));
+      )));
+      usedIds.add(st.id);
     }
   }
 
   for (final d in display) {
-    events.add(UnifiedEvent(
+    events.add(_cached(d.id, d, () => UnifiedEvent(
       type: EventType.display,
       id: d.id,
       deviceId: d.deviceId,
@@ -139,11 +155,12 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
       subtitle: d.preview ?? 'custom display',
       level: 'info',
       rawData: d,
-    ));
+    )));
+    usedIds.add(d.id);
   }
 
   for (final op in asyncOps) {
-    events.add(UnifiedEvent(
+    events.add(_cached(op.id, op, () => UnifiedEvent(
       type: EventType.asyncOp,
       id: op.id,
       deviceId: op.deviceId,
@@ -153,7 +170,13 @@ final allEventsProvider = Provider<List<UnifiedEvent>>((ref) {
           '${op.operationType.name} - ${op.status.name}${op.duration != null ? ' (${formatDuration(op.duration!)})' : ''}',
       level: op.status == AsyncOperationStatus.reject ? 'error' : 'info',
       rawData: op,
-    ));
+    )));
+    usedIds.add(op.id);
+  }
+
+  // Clean stale cache entries
+  if (_eventCache.length > usedIds.length + 100) {
+    _eventCache.removeWhere((id, _) => !usedIds.contains(id));
   }
 
   events.sort((a, b) => a.timestamp.compareTo(b.timestamp));
