@@ -11,6 +11,8 @@ import '../../components/layout/device_bottom_bar.dart';
 import '../../components/layout/sidebar.dart';
 import '../providers/tab_visibility_provider.dart';
 import '../theme/theme_provider.dart';
+import '../../features/benchmark/provider/benchmark_providers.dart';
+import '../../features/performance/provider/performance_providers.dart';
 import '../../features/last_connected/provider/last_connected_providers.dart';
 import '../../server/providers/server_providers.dart';
 
@@ -45,6 +47,11 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.watch(lastConnectedProvider);
     // Auto-select device when exactly one is connected
     ref.watch(autoSelectDeviceProvider);
+    // Eagerly init subscriptions so data is captured from app start
+    // (these use broadcast streams — messages are lost without a listener)
+    ref.watch(benchmarkEntriesProvider);
+    ref.watch(performanceEntriesProvider);
+    ref.watch(memoryLeakEntriesProvider);
     final isCollapsed = ref.watch(sidebarCollapsedProvider);
 
     return Scaffold(

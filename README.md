@@ -1298,15 +1298,17 @@ Scan QR code to donate via MoMo or ZaloPay:
 
 ## Contributing
 
-Contributions welcome! Feel free to open issues or pull requests.
+DevConnect Manage Kit is **open source** under the [MIT License](LICENSE). Contributions are welcome!
 
-```bash
-git clone https://github.com/ridelinktechs/devconnect-manage-kit.git
-cd devconnect
-flutter pub get
-dart run build_runner build --delete-conflicting-outputs
-flutter run -d macos
-```
+### How to contribute
+
+1. Fork the repo
+2. Create your branch (`git checkout -b feature/my-feature`)
+3. Commit changes (`git commit -m 'feat: add my feature'`)
+4. Push (`git push origin feature/my-feature`)
+5. Open a Pull Request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ---
 
