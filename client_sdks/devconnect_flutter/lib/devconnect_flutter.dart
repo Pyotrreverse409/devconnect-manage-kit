@@ -54,3 +54,5 @@ export 'src/wrappers/hive_box_wrapper.dart';
 export 'src/wrappers/secure_storage_wrapper.dart';
 export 'src/wrappers/mmkv_wrapper.dart';
 export 'src/wrappers/sembast_wrapper.dart';
+export 'src/wrappers/realm_wrapper.dart';
+export 'src/wrappers/isar_wrapper.dart';

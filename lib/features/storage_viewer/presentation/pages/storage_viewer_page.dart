@@ -814,21 +814,19 @@ class _StorageDetailPanelState extends State<_StorageDetailPanel> {
                 fontWeight: FontWeight.w600,
                 color: ColorTokens.primary,
               )),
-          if (entry.value != null) ...[
-            const SizedBox(height: 16),
-            Text('Value',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[500])),
-            const SizedBox(height: 4),
-            if (isAlreadyJson)
-              JsonViewer(data: entry.value, initiallyExpanded: true)
-            else if (_formatted && parsedJson != null)
-              JsonViewer(data: parsedJson, initiallyExpanded: true)
-            else
-              JsonViewer(data: entry.value, initiallyExpanded: false),
-          ],
+          const SizedBox(height: 16),
+          Text('Value',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[500])),
+          const SizedBox(height: 4),
+          if (isAlreadyJson)
+            JsonViewer(data: entry.value, initiallyExpanded: true)
+          else if (_formatted && parsedJson != null)
+            JsonViewer(data: parsedJson, initiallyExpanded: true)
+          else
+            JsonViewer(data: entry.value, initiallyExpanded: false),
           const SizedBox(height: 16),
           Text('Metadata',
               style: TextStyle(

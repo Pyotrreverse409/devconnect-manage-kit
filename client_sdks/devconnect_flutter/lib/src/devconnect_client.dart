@@ -25,11 +25,27 @@ class DevConnectClient {
   static void safeSend(String type, Map<String, dynamic> payload) {
     // No-op in release builds — zero overhead
     if (!kDebugMode) return;
-    final inst = _instance;
-    if (inst != null) {
-      inst._send(type, payload);
-    } else if (_preInitQueue.length < 500) {
-      _preInitQueue.add({'type': type, 'payload': payload});
+    try {
+      final inst = _instance;
+      if (inst != null) {
+        inst._send(type, payload);
+      } else if (_preInitQueue.length < 500) {
+        _preInitQueue.add({'type': type, 'payload': payload});
+      }
+    } catch (_) {
+      // Encoding error — retry without body fields
+      try {
+        final stripped = Map<String, dynamic>.from(payload)
+          ..remove('requestBody')
+          ..remove('responseBody');
+        stripped['_bodyDropped'] = true;
+        final inst = _instance;
+        if (inst != null) {
+          inst._send(type, stripped);
+        } else if (_preInitQueue.length < 500) {
+          _preInitQueue.add({'type': type, 'payload': stripped});
+        }
+      } catch (_) {}
     }
   }
 
@@ -497,12 +513,42 @@ class DevConnectClient {
       if (correlationId != null) 'correlationId': correlationId,
     };
 
-    final json = jsonEncode(message);
+    String json;
+    try {
+      json = jsonEncode(message);
+    } catch (e) {
+      // Body contains non-serializable data — sanitize and retry
+      final sanitized = _sanitizePayload(payload);
+      message['payload'] = sanitized;
+      try {
+        json = jsonEncode(message);
+      } catch (_) {
+        return; // Give up completely
+      }
+    }
     if (_socket != null && _connected) {
       _socket!.add(json);
     } else if (_messageQueue.length < 1000) {
       _messageQueue.add(json);
     }
+  }
+
+  /// Sanitize payload by converting non-serializable values to strings.
+  static Map<String, dynamic> _sanitizePayload(Map<String, dynamic> payload) {
+    final result = <String, dynamic>{};
+    for (final entry in payload.entries) {
+      try {
+        jsonEncode(entry.value);
+        result[entry.key] = entry.value;
+      } catch (_) {
+        try {
+          result[entry.key] = entry.value.toString();
+        } catch (_) {
+          result[entry.key] = '<unserializable>';
+        }
+      }
+    }
+    return result;
   }
 
   // --- Safe static API (for interceptors/reporters that may run before init) ---

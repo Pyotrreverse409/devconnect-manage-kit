@@ -168,6 +168,7 @@ class _DevConnectHttpClientRequest implements HttpClientRequest {
   final String _requestId;
   final int _startTime;
   final List<int> _bodyBytes = [];
+  Future<HttpClientResponse>? _closeFuture;
 
   _DevConnectHttpClientRequest(this._inner, this._method, this._url, Uuid uuid)
       : _requestId = uuid.v4(),
@@ -187,7 +188,11 @@ class _DevConnectHttpClientRequest implements HttpClientRequest {
   }
 
   @override
-  Future<HttpClientResponse> close() async {
+  Future<HttpClientResponse> close() {
+    return _closeFuture ??= _doClose();
+  }
+
+  Future<HttpClientResponse> _doClose() async {
     try {
       final response = await _inner.close();
 
@@ -289,19 +294,36 @@ class _DevConnectHttpClientRequest implements HttpClientRequest {
   @override
   List<Cookie> get cookies => _inner.cookies;
   @override
-  Future<HttpClientResponse> get done => _inner.done;
+  Future<HttpClientResponse> get done => close();
   @override
   void addError(Object error, [StackTrace? stackTrace]) =>
       _inner.addError(error, stackTrace);
   @override
-  Future addStream(Stream<List<int>> stream) => _inner.addStream(stream);
+  Future addStream(Stream<List<int>> stream) {
+    return _inner.addStream(stream.map((data) {
+      _bodyBytes.addAll(data);
+      return data;
+    }));
+  }
   @override
-  void writeAll(Iterable objects, [String separator = ""]) =>
-      _inner.writeAll(objects, separator);
+  void writeAll(Iterable objects, [String separator = ""]) {
+    for (final obj in objects) {
+      _bodyBytes.addAll(utf8.encode(obj.toString()));
+      if (separator.isNotEmpty) _bodyBytes.addAll(utf8.encode(separator));
+    }
+    _inner.writeAll(objects, separator);
+  }
   @override
-  void writeCharCode(int charCode) => _inner.writeCharCode(charCode);
+  void writeCharCode(int charCode) {
+    _bodyBytes.add(charCode);
+    _inner.writeCharCode(charCode);
+  }
   @override
-  void writeln([Object? object = ""]) => _inner.writeln(object);
+  void writeln([Object? object = ""]) {
+    final str = '${object ?? ''}\n';
+    _bodyBytes.addAll(utf8.encode(str));
+    _inner.writeln(object);
+  }
   @override
   Future flush() => _inner.flush();
   @override
@@ -320,6 +342,7 @@ class _DevConnectHttpClientResponse extends Stream<List<int>>
   final Map<String, String> _responseHeaders;
   final dynamic _requestBody;
   bool _reported = false;
+  final List<int> _bodyBytes = [];
 
   _DevConnectHttpClientResponse(
     this._inner,
@@ -330,26 +353,52 @@ class _DevConnectHttpClientResponse extends Stream<List<int>>
     this._requestHeaders,
     this._responseHeaders,
     this._requestBody,
-  ) {
-    // Report immediately (body will be captured separately if needed)
-    _reportComplete(null);
-  }
+  );
 
-  void _reportComplete(dynamic responseBody) {
+  void _reportComplete() {
     if (_reported) return;
     _reported = true;
 
-    DevConnectClient.safeReportNetworkComplete(
-      requestId: _requestId,
-      method: _method,
-      url: _url,
-      statusCode: _inner.statusCode,
-      startTime: _startTime,
-      requestHeaders: _requestHeaders,
-      responseHeaders: _responseHeaders,
-      requestBody: _requestBody,
-      responseBody: responseBody,
-    );
+    try {
+      dynamic responseBody;
+      if (_bodyBytes.isNotEmpty) {
+        try {
+          final bodyStr = utf8.decode(_bodyBytes);
+          try {
+            responseBody = jsonDecode(bodyStr);
+          } catch (e) {
+            responseBody = bodyStr;
+          }
+        } catch (e) {
+          responseBody = '${_bodyBytes.length} bytes';
+        }
+      }
+
+      DevConnectClient.safeReportNetworkComplete(
+        requestId: _requestId,
+        method: _method,
+        url: _url,
+        statusCode: _inner.statusCode,
+        startTime: _startTime,
+        requestHeaders: _requestHeaders,
+        responseHeaders: _responseHeaders,
+        requestBody: _requestBody,
+        responseBody: responseBody,
+      );
+    } catch (e) {
+      // Fallback: at least send metadata without body
+      try {
+        DevConnectClient.safeReportNetworkComplete(
+          requestId: _requestId,
+          method: _method,
+          url: _url,
+          statusCode: _inner.statusCode,
+          startTime: _startTime,
+          requestHeaders: _requestHeaders,
+          responseHeaders: _responseHeaders,
+        );
+      } catch (_) {}
+    }
   }
 
   @override
@@ -359,10 +408,30 @@ class _DevConnectHttpClientResponse extends Stream<List<int>>
     void Function()? onDone,
     bool? cancelOnError,
   }) {
-    return _inner.listen(
+    // Safely proxy the stream using map.
+    // This ensures our body capture cannot be bypassed by onData reassignment
+    // while perfectly preserving stream semantics (pause, resume, etc).
+    final interceptedStream = _inner.map((data) {
+      _bodyBytes.addAll(data);
+      return data;
+    });
+
+    return interceptedStream.listen(
       onData,
-      onError: onError,
-      onDone: onDone,
+      onError: (Object error, StackTrace stackTrace) {
+        _reportComplete();
+        if (onError != null) {
+          if (onError is void Function(Object, StackTrace)) {
+            onError(error, stackTrace);
+          } else if (onError is void Function(Object)) {
+            onError(error);
+          }
+        }
+      },
+      onDone: () {
+        _reportComplete();
+        onDone?.call();
+      },
       cancelOnError: cancelOnError,
     );
   }

@@ -14,6 +14,7 @@ import com.devconnect.reporters.RoomReporter
 import com.devconnect.reporters.SQLDelightReporter
 import com.devconnect.reporters.DevConnectStateObserver
 import com.devconnect.reporters.SharedPrefsReporter
+import com.devconnect.wrappers.DevConnectRealm
 import org.json.JSONObject
 import java.util.UUID
 
@@ -163,6 +164,8 @@ object DevConnect {
         enabled: Boolean = true,
         versionCode: String? = null,
         autoInterceptLogs: Boolean = false,
+        /** Auto-intercept HttpURLConnection (Volley, native HTTP). Default: true */
+        autoInterceptHttp: Boolean = true,
         /** Auto-start performance monitoring (default: true) */
         autoPerformance: Boolean = true,
         /** Auto-start memory leak detection (default: true) */
@@ -245,6 +248,11 @@ object DevConnect {
         // Auto-intercept System.out (println) if enabled
         if (autoInterceptLogs) {
             com.devconnect.interceptors.DevConnectLogInterceptor.interceptSystemOut()
+        }
+
+        // Auto-intercept HttpURLConnection (catches Volley, native HTTP, etc.)
+        if (autoInterceptHttp) {
+            DevConnectURLStreamHandlerFactory.install()
         }
 
         // Flush pre-init queue (messages from interceptors before init)
@@ -600,6 +608,23 @@ object DevConnect {
      * ```
      */
     fun realmReporter(): RealmReporter = RealmReporter()
+
+    /**
+     * Get the Realm auto-wrapper for capturing operations without manual reporting.
+     *
+     * ```kotlin
+     * // Wrap write operations
+     * DevConnectRealm.wrapWrite("User") {
+     *     realm.writeBlocking { copyToRealm(user) }
+     * }
+     *
+     * // Wrap query operations
+     * val users = DevConnectRealm.wrapQuery("User") {
+     *     realm.query<User>().find().map { mapOf("name" to it.name) }
+     * }
+     * ```
+     */
+    fun realmWrapper(): DevConnectRealm = DevConnectRealm()
 
     fun objectBoxReporter(): ObjectBoxReporter = ObjectBoxReporter()
 

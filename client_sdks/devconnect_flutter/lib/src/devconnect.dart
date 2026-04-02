@@ -18,6 +18,8 @@ import 'reporters/mmkv_reporter.dart';
 import 'reporters/secure_storage_reporter.dart';
 import 'reporters/signals_observer.dart';
 import 'reporters/storage_reporter.dart';
+import 'wrappers/isar_wrapper.dart';
+import 'wrappers/realm_wrapper.dart';
 import 'plugins/performance_monitor.dart' as perf_monitor;
 import 'plugins/memory_leak_detector.dart' as memory_detector;
 import 'plugins/app_benchmark.dart' as app_bench;
@@ -88,7 +90,7 @@ class DevConnect {
   /// - Does NOT capture framework/system logs, only YOUR code's print statements
   static Future<void> initAndRunApp({
     required String appName,
-    required void Function() runApp,
+    required Future<void> Function() runApp,
     String appVersion = '1.0.0',
     String? versionCode,
     String? host,
@@ -104,16 +106,70 @@ class DevConnect {
     /// Auto-start app benchmark (default: true)
     bool autoBenchmark = true,
   }) async {
-    WidgetsFlutterBinding.ensureInitialized();
-
     // Production kill-switch: completely no-op in release builds.
-    // No WebSocket, no monitoring, no timers — zero overhead.
     if (!(enabled ?? kDebugMode)) {
-      runApp();
+      WidgetsFlutterBinding.ensureInitialized();
+      await runApp();
       return;
     }
 
-    // Monitoring plugins only run in debug
+    // When autoInterceptLogs is true, EVERYTHING runs inside runZoned:
+    //   ensureInitialized → monitors → init → runApp
+    //   This ensures print() is captured AND no zone mismatch.
+    //
+    // IMPORTANT: Do NOT call WidgetsFlutterBinding.ensureInitialized()
+    // before initAndRunApp. Put ALL your init (Firebase, prefs, etc.)
+    // inside the runApp callback.
+    if (autoInterceptLogs) {
+      DevConnectLogInterceptor.runZoned(() async {
+        WidgetsFlutterBinding.ensureInitialized();
+        await _initAndRun(
+          autoPerformance: autoPerformance,
+          autoMemoryLeak: autoMemoryLeak,
+          autoBenchmark: autoBenchmark,
+          appName: appName,
+          appVersion: appVersion,
+          versionCode: versionCode,
+          host: host,
+          port: port,
+          auto_: auto_,
+          autoInterceptHttp: autoInterceptHttp,
+          runApp: runApp,
+        );
+      });
+    } else {
+      WidgetsFlutterBinding.ensureInitialized();
+      await _initAndRun(
+        autoPerformance: autoPerformance,
+        autoMemoryLeak: autoMemoryLeak,
+        autoBenchmark: autoBenchmark,
+        appName: appName,
+        appVersion: appVersion,
+        versionCode: versionCode,
+        host: host,
+        port: port,
+        auto_: auto_,
+        autoInterceptHttp: autoInterceptHttp,
+        runApp: runApp,
+      );
+    }
+  }
+
+  /// Internal: start monitors → connect → runApp
+  static Future<void> _initAndRun({
+    required bool autoPerformance,
+    required bool autoMemoryLeak,
+    required bool autoBenchmark,
+    required String appName,
+    required String appVersion,
+    required String? versionCode,
+    required String? host,
+    required int port,
+    required bool auto_,
+    required bool autoInterceptHttp,
+    required Future<void> Function() runApp,
+  }) async {
+    // Monitoring plugins (binding is already initialized)
     if (autoPerformance) perf_monitor.startPerformanceMonitor();
     if (autoMemoryLeak) memory_detector.startMemoryLeakDetector();
     if (autoBenchmark) app_bench.setupAppBenchmark();
@@ -125,8 +181,8 @@ class DevConnect {
       host: host,
       port: port,
       auto_: auto_,
-      enabled: true, // already checked above
-      autoPerformance: false, // already started above
+      enabled: true,
+      autoPerformance: false,
       autoMemoryLeak: false,
       autoBenchmark: false,
     );
@@ -136,12 +192,7 @@ class DevConnect {
       HttpOverrides.global = DevConnectHttpOverrides();
     }
 
-    // Run app in zone that captures print() and debugPrint()
-    if (autoInterceptLogs) {
-      runZoned(runApp);
-    } else {
-      runApp();
-    }
+    await runApp();
   }
 
   /// Initialize DevConnect and connect to desktop app.
@@ -424,6 +475,42 @@ class DevConnect {
   /// ```
   static DevConnectIsarReporter isarReporter() {
     return DevConnectIsarReporter();
+  }
+
+  /// Auto-reporting wrapper for Isar database operations.
+  ///
+  /// ```dart
+  /// final isarWrapper = DevConnect.isarWrapper();
+  /// final id = isarWrapper.put('users', () => isar.users.put(user));
+  /// final users = isarWrapper.query('users', () => isar.users.where().findAll());
+  /// isarWrapper.delete('users', () => isar.users.delete(42), id: 42);
+  /// ```
+  ///
+  /// Or wrap the instance directly:
+  /// ```dart
+  /// final w = DevConnectIsar.wrap(isar);
+  /// final id = w.put('users', () => isar.users.put(user));
+  /// ```
+  static DevConnectIsar isarWrapper() {
+    return DevConnectIsar.wrap(null);
+  }
+
+  /// Auto-reporting wrapper for Realm database operations.
+  ///
+  /// ```dart
+  /// final realmWrapper = DevConnect.realmWrapper();
+  /// realmWrapper.write('User', () { realm.add(User('John')); });
+  /// final users = realmWrapper.query('User', () => realm.all<User>().toList());
+  /// realmWrapper.delete('User', () { realm.delete(user); });
+  /// ```
+  ///
+  /// Or wrap the instance directly:
+  /// ```dart
+  /// final w = DevConnectRealm.wrap(realm);
+  /// w.write('User', () { realm.add(User('John')); });
+  /// ```
+  static DevConnectRealm realmWrapper() {
+    return DevConnectRealm.wrap(null);
   }
 
   // ---- State Management ----

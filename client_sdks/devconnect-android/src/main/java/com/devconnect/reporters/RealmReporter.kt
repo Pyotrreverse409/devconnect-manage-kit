@@ -38,7 +38,7 @@ class RealmReporter {
      * Report a Realm query and its results.
      */
     fun reportQuery(className: String, results: List<Map<String, Any?>>) {
-        DevConnect.sendStorage(
+        DevConnect.reportStorageOperation(
             storageType = STORAGE_TYPE,
             key = className,
             value = results,
@@ -50,7 +50,7 @@ class RealmReporter {
      * Report a Realm write (create/update) operation.
      */
     fun reportWrite(className: String, data: Map<String, Any?>) {
-        DevConnect.sendStorage(
+        DevConnect.reportStorageOperation(
             storageType = STORAGE_TYPE,
             key = className,
             value = data,
@@ -62,7 +62,7 @@ class RealmReporter {
      * Report a Realm delete operation.
      */
     fun reportDelete(className: String, data: Map<String, Any?>? = null) {
-        DevConnect.sendStorage(
+        DevConnect.reportStorageOperation(
             storageType = STORAGE_TYPE,
             key = className,
             value = data,
@@ -74,7 +74,7 @@ class RealmReporter {
      * Report a Realm batch write (transaction).
      */
     fun reportTransaction(description: String, affectedObjects: Int) {
-        DevConnect.sendStorage(
+        DevConnect.reportStorageOperation(
             storageType = STORAGE_TYPE,
             key = description,
             value = mapOf("affectedObjects" to affectedObjects),
