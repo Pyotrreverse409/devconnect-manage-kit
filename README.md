@@ -10,7 +10,7 @@
 [![Flutter](https://img.shields.io/badge/Flutter-SDK-02569B?logo=flutter)](client_sdks/devconnect_manage_kit)
 [![React Native](https://img.shields.io/badge/React%20Native-SDK-61DAFB?logo=react)](client_sdks/devconnect-manage-kit)
 [![Android](https://img.shields.io/badge/Android-SDK-3DDC84?logo=android)](client_sdks/devconnect-manage-android)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Free%20Non--Commercial-green.svg)](LICENSE)
 
 [Features](#features) · [Download](#download) · [Quick Start](#quick-start) · [Desktop Guide](#using-the-desktop-app) · [SDKs](#flutter-sdk) · [Support](#support-devconnect-manage-kit)
 
@@ -132,17 +132,6 @@ That's it. Open DevConnect Manage Tool desktop, run your app, and everything app
 ---
 
 ## Desktop App
-
-### Build from source
-
-### Download
-
-| Platform | File | Architecture |
-|----------|------|-------------|
-| macOS | `DevConnectManageTool-macOS-v1.0.0-universal.dmg` | arm64 + x86_64 |
-| Windows | `DevConnectManageTool-Windows-v1.0.0.zip` | x64 |
-
-Download from [Releases](https://github.com/ridelinktechs/devconnect-manage-kit/releases).
 
 ### Build from source
 
@@ -1326,7 +1315,14 @@ Looking for mobile debugging tools? Here's how DevConnect compares:
 
 ## License
 
-MIT - by [ridelinktechs](https://github.com/ridelinktechs)
+| Component | License | Commercial use |
+|---|---|---|
+| **Client SDKs** (Flutter, React Native, Android) | MIT | Free, no restrictions |
+| **Desktop Application** (source code) | Custom Non-Commercial | Requires paid license |
+
+**SDKs** — Use freely in any project, including commercial apps. See [client_sdks/*/LICENSE](client_sdks/).
+
+**Desktop App** — Free for personal, educational, and open-source use. Commercial use requires written permission. Contact [buivietphi](https://github.com/buivietphi) for commercial licensing. See [LICENSE](LICENSE).
 
 ---
 
